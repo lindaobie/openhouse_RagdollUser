@@ -343,11 +343,13 @@ Move-Item : Cannot create a file when that file already exists.
 
 ```json
 {
-  "roles": { "LHR-180D3882": "generic_tracker" },
-  "controllers": { "left": "LHR-8F9BE6F2", "right": "LHR-13DA81D1" },
-  "disabledDevices": ["LHR-0AC3E7C8"]
+  "roles": { "LHR-00000001": "generic_tracker" },
+  "controllers": { "left": "LHR-00000002", "right": "LHR-00000003" },
+  "disabledDevices": ["LHR-00000004"]
 }
 ```
+
+（上面的序列号是示位，实际写的是你自己设备的 `LHR-` 编号，在 `openhouse-viewer` 里能看到。）
 
 角色可选 `left_hand` / `right_hand` / `generic_tracker`。**把 Vive 手柄当腰上 tracker 用**就是靠这个。
 
