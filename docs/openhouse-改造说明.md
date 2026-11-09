@@ -140,7 +140,7 @@ if (target - pw > 1.0f) {
 | `openhouse-实施计划.md` | 分阶段实施计划。部署、测量、链路、权重调度四个阶段，每阶段附带验收条件 |
 | `openhouse-修复报告-中文.md` | 激光电流缺陷的完整分析与修复说明（中文） |
 | `openhouse-issue-laser-current.md` | 同上（英文版），按上游 issue 格式组织，可直接提交 |
-| `基站台账.md` | 六台基站的物理身份对照表：机身序列号、`LHB-` 序列号、频道、所属批次、备份文件 |
+| `基站台账.md` | 本机基站的身份对照表（机身序列号、`LHB-` 序列号、频道、批次、备份文件）。**含本机设备标识，不上传** |
 
 ### 3.5 数据存档
 
@@ -220,14 +220,14 @@ if (target - pw > 1.0f) {
 ```
 room-1794234373   settled=True   learned=3   seen=3   epoch=1
 
-LHB-1DA59AC0  频道 2  learned  placed
-LHB-52D9BF61  频道 3  learned  placed  locked
-LHB-7E1946CD  频道 1  learned  placed  locked
+基站 A  频道 2  learned  placed
+基站 B  频道 3  learned  placed  locked
+基站 C  频道 1  learned  placed  locked
 
-tracker LHR-FFB5FD40   basesSeen=3
-    1DA59AC0   frames=18   sensors=4.5
-    52D9BF61   frames=20   sensors=7.4
-    7E1946CD   frames=20   sensors=11.0
+tracker  basesSeen=3
+    基站 A   frames=18   sensors=4.5
+    基站 B   frames=20   sensors=7.4
+    基站 C   frames=20   sensors=11.0
 ```
 
 ---
