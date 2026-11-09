@@ -1,0 +1,190 @@
+// USB/HID transport: finds Valve Lighthouse devices with hidapi, reads their HID
+// reports on one thread (like CLighthouseUsbThread, 0x3cb310) and pushes decoded
+// data into an IInputSink. Optionally tees raw reports to a RawCaptureWriter.
+//
+// This is the only component that touches hardware; the tracking library only
+// sees IInputSink calls.
+#pragma once
+
+#include <atomic>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <set>
+#include <thread>
+#include <vector>
+
+#include "lh/input_sink.hpp"
+#include "raw_capture.hpp"
+#include "report_parser.hpp"
+
+struct hid_device_;
+struct hid_device_info;
+
+namespace lh::usb {
+
+struct DeviceCommandResult {
+  DeviceId serial;
+  bool powerOff = false;
+  const char* status = "not-connected";  // written / expired / write-failed / not-connected
+  int bytes = 0;                     // HID return count; not a motor acknowledgement
+  std::array<uint8_t, 64> report{};
+};
+
+struct UsbTransportOptions {
+  // Where to find SteamVR's cached device configs (lhr-xxxxxxxx/config.json).
+  std::string steamLighthouseConfigDir;  // empty = $HOME/.local/share/Steam/config/lighthouse
+  std::string capturePath;               // non-empty: write .lhraw capture
+  // Called on the reader thread after dispatch. Never called with a transport lock held.
+  std::function<void(const DeviceCommandResult&)> onCommandResult;
+  bool fetchConfigIfMissing = true;      // feature 0x10/0x11 + zlib; cache remains preferred
+};
+
+// Decodes a stream of raw reports (live or from a capture) into an IInputSink.
+// Keeps per-device state (tick unwrapping, clock sync, range modes).
+class ReportDecoder {
+ public:
+  explicit ReportDecoder(IInputSink* sink) : sink_(sink) {}
+  void AddEndpoint(const EndpointInfo& e);
+  // An unplugged endpoint: its parser state goes (the device's shared state stays, so
+  // the same device on a replugged receiver continues under the same id).
+  void RemoveEndpoint(uint16_t ep) { eps_.erase(ep); }
+  void OnReport(const RawReport& r);
+  void OnReport(double hostTime, uint16_t ep, bool last, const uint8_t* data, size_t len);
+  uint64_t WirelessGeneration(uint16_t ep) const {
+    auto it = eps_.find(ep);
+    return it == eps_.end() ? 0 : it->second.generation;
+  }
+  void SetVersionNegotiation(uint16_t ep) { eps_.at(ep).versioning = true; }
+  WirelessReportParser* Wireless(uint16_t ep) {
+    auto it = eps_.find(ep);
+    return it == eps_.end() ? nullptr : it->second.wireless.get();
+  }
+
+ private:
+  struct Ep {
+    EndpointInfo info;
+    double lastWirelessReport = 0;
+    bool connected = true, versioning = false;
+    uint64_t generation = 0;
+    std::unique_ptr<ImuReportParser> imu;
+    std::unique_ptr<OpticalReportParser> optical;
+    std::unique_ptr<WirelessReportParser> wireless;
+  };
+  void ResetWireless(Ep& ep);
+  IInputSink* sink_;
+  std::map<std::string, std::shared_ptr<DeviceState>> devices_;
+  std::map<uint16_t, Ep> eps_;
+};
+
+class UsbTransport {
+ public:
+  UsbTransport(IInputSink* sink, UsbTransportOptions opts = {});
+  ~UsbTransport();
+
+  // Enumerates and opens devices, starts the reader thread.
+  bool Start();
+  void Stop();
+
+  std::vector<EndpointInfo> Endpoints() const;
+  bool CaptureHealthy() const { return capture_.Healthy(); }
+  // Starts (a path) or stops (empty) a .lhraw capture while running; every open device is
+  // written first, so the file replays like one started with the session.
+  void SetCapture(const std::string& path);
+  // Queued to the HID reader: never issue feature reports from host callbacks.
+  void Haptic(const DeviceId& serial, double frequency, double amplitude, double duration);
+  void PowerOff(const DeviceId& serial);
+  // Ask a device (wireless or wired) for LH1 (0) or LH2 (1) light reports.
+  void SetOpticalSubProtocol(const DeviceId& serial, int sub);
+
+  // Wireless receivers (dongles) plugged in now, and the device connected to each
+  // ("" if none). Any thread.
+  struct Receiver { std::string serial, connected; uint16_t pid = 0; };
+  std::vector<Receiver> Receivers() const;
+  // Puts a receiver into pairing mode for `milliseconds` (0: leaves pairing mode), as
+  // stock 0x3ce9e0 / 0x3cea40: feature 0xff "ad 03 <on> <ms u16>". A receiver that has a
+  // device is reopened afterwards (its device is replaced). Any thread; false if no such
+  // receiver is plugged in.
+  bool SetPairing(const std::string& receiver, int milliseconds);
+
+  // Loads a cached SteamVR config for a serial ("LHR-0704E07A"), or "".
+  static std::string LoadSteamConfig(const std::string& dir, const std::string& serial);
+
+ private:
+  struct Open {
+    EndpointInfo info;
+    hid_device_* dev = nullptr;
+    double versionRequestTime = 0;  // pending wireless protocol request
+    bool disconnected = false;
+    bool wantVersion = false;
+    uint64_t generation = 0;
+    std::string receiver;  // dongle serial for wireless devices
+    int sensorType = -1;   // hardware id low byte (report 0x05), -1 unknown
+    std::string path;      // hidapi path, unique while plugged in
+  };
+  enum class OpenResult { Failed, Idle, Ready };
+  // Opens and sets up one enumerated HID interface (Start and hotplug).
+  OpenResult OpenEndpoint(const ::hid_device_info* d, Open* out);
+  void Enumerate(bool startup);  // opens interfaces not open yet
+  void CompleteSetup(Open& o, bool supportsVersioning);
+  void RequestVersion(Open& o);
+  void Run();
+  void ProbeMain();  // hotplug: new interfaces, and receivers with no device connected yet
+  static bool FetchRangeModes(hid_device_* dev, int8_t& gyro, int8_t& accel);
+  struct DeviceInfo {
+    uint32_t serial = 0;
+    bool supportsVersioning = false;
+  };
+  // 0x3dd8a0: feature 0x83 TLV device info.
+  // attempts: how long to wait for a receiver that has no device yet (each ~55 ms).
+  static bool QueryDeviceInfo(hid_device_* dev, DeviceInfo* info, int attempts = 20);
+  static bool RequestProtocolVersion(hid_device_* dev, int version);
+
+  void Log(LogLevel level, const char* format, ...) __attribute__((format(printf, 3, 4)));
+  IInputSink* sink_;
+  UsbTransportOptions opts_;
+  ReportDecoder decoder_;
+  RawCaptureWriter capture_;
+  std::vector<Open> open_;
+  // Receivers whose wireless device is not connected yet (owned by the probe thread)
+  // and endpoints the probe thread finished setting up (handed to the reader thread).
+  std::vector<Open> idle_;
+  std::vector<Open> pending_;
+  std::mutex pendingMutex_;
+  std::atomic<bool> havePending_{false};
+  std::mutex captureMutex_;
+  std::optional<std::string> captureRequest_;
+  std::atomic<bool> haveCaptureRequest_{false};
+  std::thread probe_;
+  // Paths of every interface open (or idle) now; the reader thread drops a path when
+  // its interface goes away, so a replugged receiver is opened again.
+  std::set<std::string> paths_;
+  std::set<std::string> failedPaths_;  // logged once (e.g. held open by SteamVR)
+  std::mutex pathsMutex_;
+  std::atomic<uint16_t> nextEp_{0};
+  std::thread thread_;
+  std::atomic<bool> stop_{false};
+  int wirelessProtocol_ = 1;
+  struct HapticCommand {
+    std::string serial; std::array<uint8_t, 64> report; double deadline; bool powerOff = false;
+    int opticalMode = -1;  // light-mode command: wired devices take another report (below)
+  };
+  std::mutex hapticMutex_;
+  std::vector<HapticCommand> haptics_;
+  struct PairCommand { std::string receiver; int milliseconds; };
+  std::vector<PairCommand> pairing_;  // under hapticMutex_; read by the reader and probe threads
+  // Run a pending pairing command for `o`'s receiver; true if one was sent.
+  bool TakePairing(Open& o);
+  // Configs read from the devices this session (serial -> JSON): a reconnect reuses it.
+  std::mutex configMutex_;
+  std::map<std::string, std::string> sessionConfigs_;
+  mutable std::mutex receiversMutex_;
+  std::map<std::string, Receiver> receivers_;
+  void SetReceiver(const Open& o, const std::string& connected);
+  void DropReceiver(const std::string& serial);
+};
+
+}  // namespace lh::usb

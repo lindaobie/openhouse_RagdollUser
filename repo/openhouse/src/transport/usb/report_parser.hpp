@@ -1,0 +1,94 @@
+// HID report decoding for wired Lighthouse devices (Index HMD, wired trackers).
+//
+// Pure functions of (bytes, per-device state) -> IInputSink calls. No hidapi here,
+// so the same code decodes live reports and raw captures.
+// Reference: ai/driver/usb_protocol.md.
+#pragma once
+
+#include <cstddef>
+#include <climits>
+#include <cstdint>
+#include <memory>
+
+#include "clock_sync.hpp"
+#include "lh/input_sink.hpp"
+#include "tick_unwrapper.hpp"
+#include "wireless_decoder.hpp"
+
+namespace lh::usb {
+
+// State shared by all endpoints of one physical device.
+struct DeviceState {
+  DeviceId id;
+  TickUnwrapper ticks;
+  ClockSync clock;
+  int gyroRange = -1;   // feature report 0x01 byte 1; -1 = unknown (IMU dropped)
+  int accelRange = -1;  // feature report 0x01 byte 2
+};
+
+// Per-endpoint IMU sample emission (0x3d07c0): scaling, saturation flags and
+// "only newer than the last emitted sample".
+class ImuEmitter {
+ public:
+  ImuEmitter(std::shared_ptr<DeviceState> dev, IInputSink* sink) : dev_(std::move(dev)), sink_(sink) {}
+  bool IsNew(int64_t ticks) const { return ticks > lastTicks_; }
+  void Emit(const uint8_t* raw12, int64_t ticks);  // raw12: int16 accel[3], gyro[3]
+  int64_t LastTicks() const { return lastTicks_; }
+
+ private:
+  std::shared_ptr<DeviceState> dev_;
+  IInputSink* sink_;
+  int64_t lastTicks_ = INT64_MIN;  // endpoint+0x50 (times may be negative right after start)
+};
+
+// CLighthouseIMUThread::OnReport (0x3d1a60), wired report 0x20.
+class ImuReportParser {
+ public:
+  ImuReportParser(std::shared_ptr<DeviceState> dev, IInputSink* sink) : dev_(dev), sink_(sink), imu_(dev, sink) {}
+  // Returns false if the report id is not handled.
+  bool Parse(double hostTime, const uint8_t* data, size_t len, bool lastInBatch);
+
+ private:
+  std::shared_ptr<DeviceState> dev_;
+  IInputSink* sink_;
+  ImuEmitter imu_;
+};
+
+// Watchman dongle reports 0x23 (one 29-byte packet) / 0x24 (two) — 0x3d1920 / 0x3d18d0.
+class WirelessReportParser {
+ public:
+  WirelessReportParser(std::shared_ptr<DeviceState> dev, IInputSink* sink) : dev_(dev), sink_(sink), imu_(dev, sink) {}
+  bool Parse(double hostTime, const uint8_t* data, size_t len, bool lastInBatch);
+  int ProtocolVersion() const { return version_; }
+  // After sending the "request protocol version" feature report (0x3cc9a0) the
+  // endpoint waits (version 2) for the device's transition packet.
+  void SetPendingVersionRequest() { version_ = 2; }
+
+ private:
+  bool DecodePacket(const uint8_t* pkt, int64_t* imuTicks);
+  std::shared_ptr<DeviceState> dev_;
+  IInputSink* sink_;
+  ImuEmitter imu_;
+  int version_ = 0;  // +0x128: 0 legacy, 1 Wv2
+  Wv2Decoder wv2_;
+  WirelessPacket pkt_;
+};
+
+// CLighthouseOpticalThread::OnReport (0x3cf250).
+class OpticalReportParser {
+ public:
+  OpticalReportParser(std::shared_ptr<DeviceState> dev, IInputSink* sink) : dev_(std::move(dev)), sink_(sink) {}
+  // The stock wired index-HMD optical reader uses absolute (unshifted) widths
+  // (0x3cec20 compares 23/48k..25/48k directly). Wireless devices go through the
+  // TDM path, so their sensor-type width offset must not be applied here either.
+  bool Parse(double hostTime, const uint8_t* data, size_t len);
+
+ private:
+  void OnRawPulse(double t, double width, int sensor);  // 0x3cec20
+  void ParseLh2Stream(const uint8_t* data, size_t len); // 0x3cf040
+  std::shared_ptr<DeviceState> dev_;
+  IInputSink* sink_;
+  double syncEventHoldoff_ = 0;  // endpoint+0x58
+};
+
+}  // namespace lh::usb

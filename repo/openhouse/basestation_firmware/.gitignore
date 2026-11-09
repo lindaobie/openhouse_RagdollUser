@@ -1,0 +1,18 @@
+# Build output
+build/
+__pycache__/
+*.pyc
+*.elf
+*.map
+*.o
+
+# Local only: bring-up firmware, patches, RE tools
+fw/
+patches/
+re/
+
+# Stock HTC firmware, flash/EEPROM dumps (stock code + per-unit factory calibration) and
+# the stock firmware's disassembly: not ours to publish.
+*.bin
+backups/
+bsfirmwares/

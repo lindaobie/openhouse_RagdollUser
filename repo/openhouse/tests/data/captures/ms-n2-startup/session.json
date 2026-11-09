@@ -1,0 +1,324 @@
+{
+  "clock": "C++ steady_clock seconds; same host clock as raw reports",
+  "database_file": "lighthousedb.json",
+  "devices": [
+    {
+      "attached": false,
+      "has_config": true,
+      "imu_samples": 64860,
+      "last_clock_offset": 15559.358911931778,
+      "lh2_words": 0,
+      "light_pulses": 0,
+      "serial": "LHR-0704E07A"
+    },
+    {
+      "attached": false,
+      "has_config": true,
+      "imu_samples": 16122,
+      "last_clock_offset": 15569.618635736313,
+      "lh2_words": 0,
+      "light_pulses": 11929,
+      "serial": "LHR-13DA81D1"
+    }
+  ],
+  "endpoints": [
+    {
+      "accel_range": 1,
+      "endpoint": 0,
+      "gyro_range": 1,
+      "interface": 0,
+      "kind": 0,
+      "pid": 8192,
+      "serial": "LHR-0704E07A",
+      "vid": 10462
+    },
+    {
+      "accel_range": -1,
+      "endpoint": 1,
+      "gyro_range": -1,
+      "interface": 1,
+      "kind": 1,
+      "pid": 8192,
+      "serial": "LHR-0704E07A",
+      "vid": 10462
+    }
+  ],
+  "firmware_config": "N=2 policy all, wake from standby",
+  "format": "LHRAW001",
+  "has_imu": true,
+  "has_lh1_light": true,
+  "has_reference_poses": false,
+  "last_update_host_time": 15635.525301086,
+  "markers_file": "markers.jsonl",
+  "raw_file": "input.lhraw",
+  "reader_ready_host_time": 15571.308058916,
+  "reader_seconds": 64.85242527000082,
+  "requested_seconds": 115.0,
+  "scenario": "n2-startup",
+  "schema": 1,
+  "start_host_time": 15570.703338965,
+  "start_unix_time": 1792439643.6736624,
+  "status": "complete",
+  "stop_host_time": 15636.160483106,
+  "stop_reason": "signal",
+  "stop_unix_time": 1792439709.1308067,
+  "sync_reports": [
+    {
+      "host_time": 15572.31129994,
+      "report": ""
+    },
+    {
+      "host_time": 15573.314414495,
+      "report": ""
+    },
+    {
+      "host_time": 15574.31757894,
+      "report": ""
+    },
+    {
+      "host_time": 15575.320699807,
+      "report": ""
+    },
+    {
+      "host_time": 15576.323908124,
+      "report": ""
+    },
+    {
+      "host_time": 15577.327090802,
+      "report": ""
+    },
+    {
+      "host_time": 15578.330258701,
+      "report": ""
+    },
+    {
+      "host_time": 15579.33342743,
+      "report": ""
+    },
+    {
+      "host_time": 15580.33656072,
+      "report": ""
+    },
+    {
+      "host_time": 15581.339680251,
+      "report": ""
+    },
+    {
+      "host_time": 15582.343013213,
+      "report": ""
+    },
+    {
+      "host_time": 15583.346206606,
+      "report": ""
+    },
+    {
+      "host_time": 15584.349421509,
+      "report": ""
+    },
+    {
+      "host_time": 15585.352794414,
+      "report": ""
+    },
+    {
+      "host_time": 15586.355993929,
+      "report": ""
+    },
+    {
+      "host_time": 15587.359871096,
+      "report": ""
+    },
+    {
+      "host_time": 15588.364027344,
+      "report": ""
+    },
+    {
+      "host_time": 15589.367416362,
+      "report": ""
+    },
+    {
+      "host_time": 15590.37057388,
+      "report": ""
+    },
+    {
+      "host_time": 15591.373611019,
+      "report": ""
+    },
+    {
+      "host_time": 15592.376863718,
+      "report": ""
+    },
+    {
+      "host_time": 15593.380161149,
+      "report": ""
+    },
+    {
+      "host_time": 15594.38349169,
+      "report": ""
+    },
+    {
+      "host_time": 15595.386708452,
+      "report": ""
+    },
+    {
+      "host_time": 15596.390629006,
+      "report": ""
+    },
+    {
+      "host_time": 15597.39384297,
+      "report": ""
+    },
+    {
+      "host_time": 15598.398023756,
+      "report": ""
+    },
+    {
+      "host_time": 15599.401793892,
+      "report": ""
+    },
+    {
+      "host_time": 15600.405358058,
+      "report": ""
+    },
+    {
+      "host_time": 15601.408564795,
+      "report": ""
+    },
+    {
+      "host_time": 15602.411788232,
+      "report": ""
+    },
+    {
+      "host_time": 15603.41496911,
+      "report": ""
+    },
+    {
+      "host_time": 15604.418186949,
+      "report": ""
+    },
+    {
+      "host_time": 15605.421320378,
+      "report": ""
+    },
+    {
+      "host_time": 15606.424754718,
+      "report": ""
+    },
+    {
+      "host_time": 15607.428026749,
+      "report": ""
+    },
+    {
+      "host_time": 15608.431254821,
+      "report": ""
+    },
+    {
+      "host_time": 15609.434758334,
+      "report": ""
+    },
+    {
+      "host_time": 15610.437788367,
+      "report": ""
+    },
+    {
+      "host_time": 15611.441095021,
+      "report": ""
+    },
+    {
+      "host_time": 15612.444548646,
+      "report": ""
+    },
+    {
+      "host_time": 15613.448131962,
+      "report": ""
+    },
+    {
+      "host_time": 15614.451617509,
+      "report": ""
+    },
+    {
+      "host_time": 15615.455179796,
+      "report": ""
+    },
+    {
+      "host_time": 15616.458564814,
+      "report": ""
+    },
+    {
+      "host_time": 15617.461721263,
+      "report": ""
+    },
+    {
+      "host_time": 15618.464818151,
+      "report": ""
+    },
+    {
+      "host_time": 15619.468037721,
+      "report": ""
+    },
+    {
+      "host_time": 15620.471184311,
+      "report": "  LHR-13DA81D1: 67 groups/s, flashes/group 1:100% | @  0us seen 100% sweeps after 48% (1/2.1), 168 hits/s | => one station\n"
+    },
+    {
+      "host_time": 15621.474284422,
+      "report": "  LHR-13DA81D1: 108 groups/s, flashes/group 1:100% | @  0us seen 100% sweeps after 50% (1/2.0), 270 hits/s | => one station\n"
+    },
+    {
+      "host_time": 15622.477370514,
+      "report": "  LHR-13DA81D1: 113 groups/s, flashes/group 1:100% | @  0us seen 100% sweeps after 50% (1/2.0), 282 hits/s | => one station\n"
+    },
+    {
+      "host_time": 15623.480672177,
+      "report": "  LHR-13DA81D1: 115 groups/s, flashes/group 1:100% | @  0us seen 100% sweeps after 50% (1/2.0), 287 hits/s | => one station\n"
+    },
+    {
+      "host_time": 15624.484695792,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 1:100% | @  0us seen 100% sweeps after 50% (1/2.0), 301 hits/s | => one station\n"
+    },
+    {
+      "host_time": 15625.488699707,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 1:100% | @  0us seen 100% sweeps after 50% (1/2.0), 301 hits/s | => one station\n"
+    },
+    {
+      "host_time": 15626.493037654,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 1:100% | @  0us seen 100% sweeps after 50% (1/2.0), 301 hits/s | => one station\n"
+    },
+    {
+      "host_time": 15627.496691581,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 1:84% 2:15% | @  0us seen 100% sweeps after 50% (1/2.0), 301 hits/s | @254us seen  16% sweeps after 8% (1/12.6), 71 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15628.500228548,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 1:59% 2:40% | @  0us seen 100% sweeps after 50% (1/2.0), 301 hits/s | @256us seen  41% sweeps after 20% (1/4.9), 183 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15629.503488015,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 1:33% 2:66% | @  0us seen 100% sweeps after 50% (1/2.0), 301 hits/s | @257us seen  66% sweeps after 33% (1/3.0), 298 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15630.507040573,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 1:8% 2:91% | @  0us seen 100% sweeps after 50% (1/2.0), 301 hits/s | @257us seen  91% sweeps after 46% (1/2.2), 409 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15631.510723832,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 301 hits/s | @258us seen 100% sweeps after 50% (1/2.0), 448 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15632.515068064,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 301 hits/s | @257us seen 100% sweeps after 50% (1/2.0), 447 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15633.518320723,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 301 hits/s | @256us seen 100% sweeps after 50% (1/2.0), 445 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15634.522012935,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 301 hits/s | @254us seen 100% sweeps after 50% (1/2.0), 446 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15635.525284406,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 301 hits/s | @253us seen 100% sweeps after 50% (1/2.0), 446 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    }
+  ],
+  "tool": "lhcapture"
+}

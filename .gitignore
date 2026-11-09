@@ -8,10 +8,9 @@
 # 2. 官方原始发布包（10 MB，用户不需要，我们自己的构建已经包含在内）
 /downloads/
 
-# 3. 上游源码树（单独 fork 维护，见 docs\laser-current-fix.patch）
-/repo/
+# 3. 编译中间产物（源码本身要提交，用户 clone 下来就能直接编译）
 /repo/openhouse/basestation_firmware/build/
-/repo/openhouse/.git/
+/dist/
 
 # 4. 本机采集与测试输出
 /tools/flashes.txt
@@ -20,3 +19,6 @@
 
 # 5. 编译用的本机垫片（python3.exe 是 python 安装的转发器，脱离本机无效）
 /tools/bin/
+
+# 6. 嵌套的 git 目录（源码以普通文件形式收录，历史不进来）
+/repo/openhouse/.git/

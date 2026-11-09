@@ -1,0 +1,8 @@
+{
+  "action_sets": [{"name": "/actions/probe", "usage": "single"}],
+  "actions": [
+    {"name": "/actions/probe/in/hand", "type": "skeleton", "skeleton": "/skeleton/hand/right"},
+    {"name": "/actions/probe/out/haptic", "type": "vibration"}
+  ],
+  "default_bindings": [{"controller_type": "knuckles", "binding_url": "probe_bindings.json"}]
+}

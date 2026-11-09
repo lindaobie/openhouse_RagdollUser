@@ -1,0 +1,8 @@
+{"host_time":12973.99759312,"note":"capture_ready"}
+{"host_time":12973.99761209,"note":"phase:settle"}
+{"host_time":12979.01690024,"note":"phase:moving"}
+{"host_time":13019.033187702,"note":"phase:still_all"}
+{"host_time":13034.044704043,"note":"phase:still_block_master"}
+{"host_time":13049.056351085,"note":"phase:still_block_other"}
+{"host_time":13064.067620885,"note":"phase:moving_fast"}
+{"host_time":13089.015023208,"note":"capture_stop"}

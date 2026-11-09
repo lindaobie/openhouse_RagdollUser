@@ -1,0 +1,158 @@
+{
+  "clock": "C++ steady_clock seconds; same host clock as raw reports",
+  "database_file": "lighthousedb.json",
+  "devices": [
+    {
+      "attached": false,
+      "has_config": true,
+      "imu_samples": 7693,
+      "last_clock_offset": 12004.809222918755,
+      "lh2_words": 72974,
+      "light_pulses": 943,
+      "serial": "LHR-E277B9A5"
+    }
+  ],
+  "endpoints": [],
+  "format": "LHRAW001",
+  "has_imu": true,
+  "has_lh1_light": true,
+  "has_lh2_light": true,
+  "has_reference_poses": false,
+  "last_update_host_time": 12034.422864706,
+  "markers_file": "markers.jsonl",
+  "raw_file": "input.lhraw",
+  "reader_ready_host_time": 12004.326104685,
+  "reader_seconds": 31.01980093400016,
+  "requested_seconds": 160.0,
+  "scenario": "lh2",
+  "schema": 1,
+  "start_host_time": 12003.794550805,
+  "start_unix_time": 1792691838.5169015,
+  "status": "complete",
+  "stop_host_time": 12035.345904978,
+  "stop_reason": "signal",
+  "stop_unix_time": 1792691870.0682557,
+  "sync_reports": [
+    {
+      "host_time": 12005.328963428,
+      "report": ""
+    },
+    {
+      "host_time": 12006.331847198,
+      "report": ""
+    },
+    {
+      "host_time": 12007.334670694,
+      "report": ""
+    },
+    {
+      "host_time": 12008.337556097,
+      "report": ""
+    },
+    {
+      "host_time": 12009.340344125,
+      "report": ""
+    },
+    {
+      "host_time": 12010.343200693,
+      "report": ""
+    },
+    {
+      "host_time": 12011.346065978,
+      "report": ""
+    },
+    {
+      "host_time": 12012.348938366,
+      "report": ""
+    },
+    {
+      "host_time": 12013.351898251,
+      "report": ""
+    },
+    {
+      "host_time": 12014.354719351,
+      "report": ""
+    },
+    {
+      "host_time": 12015.363002672,
+      "report": ""
+    },
+    {
+      "host_time": 12016.365794768,
+      "report": ""
+    },
+    {
+      "host_time": 12017.368644693,
+      "report": ""
+    },
+    {
+      "host_time": 12018.371444072,
+      "report": ""
+    },
+    {
+      "host_time": 12019.374281524,
+      "report": ""
+    },
+    {
+      "host_time": 12020.382421532,
+      "report": ""
+    },
+    {
+      "host_time": 12021.385173211,
+      "report": ""
+    },
+    {
+      "host_time": 12022.388121724,
+      "report": ""
+    },
+    {
+      "host_time": 12023.39100391,
+      "report": ""
+    },
+    {
+      "host_time": 12024.39386161,
+      "report": ""
+    },
+    {
+      "host_time": 12025.396673413,
+      "report": ""
+    },
+    {
+      "host_time": 12026.399565358,
+      "report": ""
+    },
+    {
+      "host_time": 12027.402447694,
+      "report": ""
+    },
+    {
+      "host_time": 12028.405337064,
+      "report": ""
+    },
+    {
+      "host_time": 12029.408301386,
+      "report": ""
+    },
+    {
+      "host_time": 12030.411178723,
+      "report": ""
+    },
+    {
+      "host_time": 12031.414064496,
+      "report": ""
+    },
+    {
+      "host_time": 12032.416932365,
+      "report": ""
+    },
+    {
+      "host_time": 12033.419895245,
+      "report": ""
+    },
+    {
+      "host_time": 12034.422855549,
+      "report": ""
+    }
+  ],
+  "tool": "lhcapture"
+}

@@ -1,0 +1,131 @@
+{
+  "clock": "C++ steady_clock seconds; same host clock as raw reports",
+  "database_file": "lighthousedb.json",
+  "devices": [
+    {
+      "attached": false,
+      "has_config": false,
+      "imu_samples": 0,
+      "last_clock_offset": 0.0,
+      "lh2_words": 0,
+      "light_pulses": 0,
+      "serial": "07787C0E1B-DYX"
+    },
+    {
+      "attached": false,
+      "has_config": false,
+      "imu_samples": 0,
+      "last_clock_offset": 0.0,
+      "lh2_words": 0,
+      "light_pulses": 0,
+      "serial": "CFE7A725E3-6YX"
+    },
+    {
+      "attached": false,
+      "has_config": false,
+      "imu_samples": 0,
+      "last_clock_offset": 0.0,
+      "lh2_words": 0,
+      "light_pulses": 0,
+      "serial": "D2F8312E15"
+    },
+    {
+      "attached": false,
+      "has_config": true,
+      "imu_samples": 93832,
+      "last_clock_offset": 13678.443291352587,
+      "lh2_words": 0,
+      "light_pulses": 576565,
+      "serial": "LHR-0704E07A"
+    },
+    {
+      "attached": false,
+      "has_config": true,
+      "imu_samples": 23183,
+      "last_clock_offset": 13678.016792579127,
+      "lh2_words": 0,
+      "light_pulses": 82181,
+      "serial": "LHR-13DA81D1"
+    }
+  ],
+  "endpoints": [
+    {
+      "accel_range": 1,
+      "endpoint": 0,
+      "gyro_range": 1,
+      "interface": 0,
+      "kind": 0,
+      "pid": 8192,
+      "serial": "LHR-0704E07A",
+      "vid": 10462
+    },
+    {
+      "accel_range": -1,
+      "endpoint": 1,
+      "gyro_range": -1,
+      "interface": 1,
+      "kind": 1,
+      "pid": 8192,
+      "serial": "LHR-0704E07A",
+      "vid": 10462
+    },
+    {
+      "accel_range": 2,
+      "endpoint": 2,
+      "gyro_range": 3,
+      "interface": 0,
+      "kind": 2,
+      "pid": 8449,
+      "serial": "D2F8312E15",
+      "vid": 10462
+    },
+    {
+      "accel_range": 2,
+      "endpoint": 3,
+      "gyro_range": 3,
+      "interface": 0,
+      "kind": 2,
+      "pid": 8449,
+      "serial": "LHR-13DA81D1",
+      "vid": 10462
+    },
+    {
+      "accel_range": -1,
+      "endpoint": 4,
+      "gyro_range": -1,
+      "interface": 0,
+      "kind": 2,
+      "pid": 8450,
+      "serial": "07787C0E1B-DYX",
+      "vid": 10462
+    },
+    {
+      "accel_range": -1,
+      "endpoint": 5,
+      "gyro_range": -1,
+      "interface": 0,
+      "kind": 2,
+      "pid": 8450,
+      "serial": "CFE7A725E3-6YX",
+      "vid": 10462
+    }
+  ],
+  "format": "LHRAW001",
+  "has_imu": true,
+  "has_lh1_light": true,
+  "has_reference_poses": false,
+  "last_update_host_time": 13767.555531874,
+  "markers_file": "markers.jsonl",
+  "raw_file": "input.lhraw",
+  "reader_ready_host_time": 13674.261056758,
+  "reader_seconds": 93.83834585600016,
+  "requested_seconds": 0.0,
+  "schema": 1,
+  "start_host_time": 13668.545433461,
+  "start_unix_time": 1792160971.3932457,
+  "status": "complete",
+  "stop_host_time": 13768.099402064,
+  "stop_reason": "signal",
+  "stop_unix_time": 1792161070.9472141,
+  "tool": "lhcapture"
+}

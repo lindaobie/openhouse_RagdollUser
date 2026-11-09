@@ -1,0 +1,16 @@
+{
+  "name": "lh-runtime",
+  "version-string": "1.0.0",
+  "builtin-baseline": "a5f736224e85b32e25a8ffc52562333180396642",
+  "dependencies": [
+    {"name": "ceres", "default-features": false, "features": ["schur"]},
+    "eigen3",
+    {"name": "hidapi", "platform": "windows"},
+    "nlohmann-json",
+    "zlib"
+  ],
+  "features": {
+    "tests": {"description": "Build portable tests and the mock OpenVR host", "dependencies": ["gtest"]},
+    "viewer": {"description": "Build the 3D visualizer", "dependencies": ["glfw3"]}
+  }
+}

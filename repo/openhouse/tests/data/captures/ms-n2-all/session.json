@@ -1,0 +1,524 @@
+{
+  "clock": "C++ steady_clock seconds; same host clock as raw reports",
+  "database_file": "lighthousedb.json",
+  "devices": [
+    {
+      "attached": false,
+      "has_config": true,
+      "imu_samples": 114995,
+      "last_clock_offset": 15290.916463326821,
+      "lh2_words": 0,
+      "light_pulses": 0,
+      "serial": "LHR-0704E07A"
+    },
+    {
+      "attached": false,
+      "has_config": true,
+      "imu_samples": 28577,
+      "last_clock_offset": 15301.182343486436,
+      "lh2_words": 0,
+      "light_pulses": 109190,
+      "serial": "LHR-13DA81D1"
+    }
+  ],
+  "endpoints": [
+    {
+      "accel_range": 1,
+      "endpoint": 0,
+      "gyro_range": 1,
+      "interface": 0,
+      "kind": 0,
+      "pid": 8192,
+      "serial": "LHR-0704E07A",
+      "vid": 10462
+    },
+    {
+      "accel_range": -1,
+      "endpoint": 1,
+      "gyro_range": -1,
+      "interface": 1,
+      "kind": 1,
+      "pid": 8192,
+      "serial": "LHR-0704E07A",
+      "vid": 10462
+    }
+  ],
+  "firmware_config": "N=2, slot0=E236DC40, slot1=A101B835, policy all, new firmware",
+  "format": "LHRAW001",
+  "has_imu": true,
+  "has_lh1_light": true,
+  "has_reference_poses": false,
+  "last_update_host_time": 15427.306969816,
+  "markers_file": "markers.jsonl",
+  "raw_file": "input.lhraw",
+  "reader_ready_host_time": 15312.920080478,
+  "reader_seconds": 115.02761708300022,
+  "requested_seconds": 115.0,
+  "scenario": "n2-all",
+  "schema": 1,
+  "start_host_time": 15312.320974287,
+  "start_unix_time": 1792439385.2912977,
+  "status": "complete",
+  "stop_host_time": 15427.947696911,
+  "stop_reason": "duration",
+  "stop_unix_time": 1792439500.91802,
+  "sync_reports": [
+    {
+      "host_time": 15313.923695086,
+      "report": "  LHR-13DA81D1: 81 groups/s, flashes/group 1:0% 2:99% | @  0us seen 100% sweeps after 50% (1/2.0), 267 hits/s | @252us seen  99% sweeps after 49% (1/2.0), 341 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15314.927426046,
+      "report": "  LHR-13DA81D1: 99 groups/s, flashes/group 1:0% 2:99% | @  0us seen 100% sweeps after 50% (1/2.0), 320 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 418 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15315.930929916,
+      "report": "  LHR-13DA81D1: 105 groups/s, flashes/group 1:0% 2:99% | @  0us seen 100% sweeps after 50% (1/2.0), 342 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 445 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15316.934518528,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 509 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15317.937626981,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @251us seen 100% sweeps after 50% (1/2.0), 511 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15318.941234835,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @250us seen 100% sweeps after 50% (1/2.0), 511 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15319.945094352,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @250us seen 100% sweeps after 50% (1/2.0), 512 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15320.948422429,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 390 hits/s | @250us seen 100% sweeps after 50% (1/2.0), 514 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15321.951681747,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 368 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 454 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15322.954875596,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 359 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 382 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15323.958425507,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 333 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 381 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15324.96254914,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 288 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 384 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15325.965628203,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 311 hits/s | @251us seen 100% sweeps after 50% (1/2.0), 425 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15326.968773817,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 336 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 463 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15327.971939353,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 413 hits/s | @248us seen 100% sweeps after 50% (1/2.0), 409 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15328.975113269,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 485 hits/s | @247us seen 100% sweeps after 50% (1/2.0), 392 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15329.978349738,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 492 hits/s | @247us seen 100% sweeps after 50% (1/2.0), 399 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15330.981565747,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 477 hits/s | @248us seen 100% sweeps after 50% (1/2.0), 413 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15331.984681268,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 421 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 458 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15332.98787527,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @251us seen 100% sweeps after 50% (1/2.0), 453 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15333.991280923,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 300 hits/s | @253us seen 100% sweeps after 50% (1/2.0), 490 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15334.994486708,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 296 hits/s | @254us seen 100% sweeps after 50% (1/2.0), 522 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15335.997959514,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 315 hits/s | @254us seen 100% sweeps after 50% (1/2.0), 456 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15337.001647062,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 286 hits/s | @254us seen 100% sweeps after 50% (1/2.0), 466 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15338.0048432,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 358 hits/s | @254us seen 100% sweeps after 50% (1/2.0), 418 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15339.00822131,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 395 hits/s | @253us seen 100% sweeps after 50% (1/2.0), 337 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15340.011400461,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 397 hits/s | @251us seen 100% sweeps after 50% (1/2.0), 373 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15341.014870583,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 416 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 378 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15342.018123117,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 433 hits/s | @248us seen 100% sweeps after 50% (1/2.0), 376 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15343.021344411,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 401 hits/s | @248us seen 100% sweeps after 50% (1/2.0), 402 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15344.024549967,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 377 hits/s | @247us seen 100% sweeps after 50% (1/2.0), 411 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15345.027642584,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 372 hits/s | @248us seen 100% sweeps after 50% (1/2.0), 388 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15346.030852753,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 345 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 388 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15347.033964342,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 322 hits/s | @250us seen 100% sweeps after 50% (1/2.0), 402 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15348.037167803,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 366 hits/s | @253us seen 100% sweeps after 51% (1/2.0), 372 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15349.040198804,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 393 hits/s | @254us seen 100% sweeps after 51% (1/2.0), 399 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15350.043965158,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 456 hits/s | @255us seen 100% sweeps after 51% (1/2.0), 417 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15351.048200245,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 479 hits/s | @254us seen 100% sweeps after 51% (1/2.0), 431 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15352.052512282,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 456 hits/s | @253us seen 100% sweeps after 50% (1/2.0), 449 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15353.0562429,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 462 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 364 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15354.060249499,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 392 hits/s | @250us seen 100% sweeps after 50% (1/2.0), 324 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15355.06405061,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 355 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 273 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15356.067569141,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 346 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 282 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15357.070586882,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 363 hits/s | @248us seen 100% sweeps after 50% (1/2.0), 327 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15358.074220106,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 415 hits/s | @248us seen 100% sweeps after 50% (1/2.0), 317 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15359.078083591,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 458 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 361 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15360.081802148,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 418 hits/s | @250us seen 100% sweeps after 50% (1/2.0), 360 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15361.085016474,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 382 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 291 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15362.088449103,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 339 hits/s | @253us seen 100% sweeps after 50% (1/2.0), 296 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15363.091888872,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 320 hits/s | @253us seen 100% sweeps after 50% (1/2.0), 281 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15364.095328003,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 355 hits/s | @253us seen 100% sweeps after 50% (1/2.0), 285 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15365.098538234,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 361 hits/s | @251us seen 100% sweeps after 50% (1/2.0), 363 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15366.101701957,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 377 hits/s | @251us seen 100% sweeps after 50% (1/2.0), 387 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15367.10486163,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @250us seen 100% sweeps after 50% (1/2.0), 391 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15368.108088905,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 391 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15369.111835602,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 391 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15370.115689431,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 391 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15371.11922125,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @250us seen 100% sweeps after 50% (1/2.0), 391 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15372.122389369,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @251us seen 100% sweeps after 50% (1/2.0), 391 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15373.12561033,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 391 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15374.128738902,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 391 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15375.131895445,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:100% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @251us seen 100% sweeps after 50% (1/2.0), 391 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15376.13526969,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 391 hits/s | @250us seen 100% sweeps after 50% (1/2.0), 391 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15377.139656858,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 381 hits/s | @248us seen 100% sweeps after 50% (1/2.0), 391 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15378.143960216,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 331 hits/s | @247us seen 100% sweeps after 50% (1/2.0), 391 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15379.148113076,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 267 hits/s | @247us seen 100% sweeps after 50% (1/2.0), 395 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15380.151169735,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 185 hits/s | @247us seen 100% sweeps after 50% (1/2.0), 418 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15381.154289365,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 96 hits/s | @248us seen 100% sweeps after 51% (1/2.0), 447 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15382.157490676,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:97% 3:2% | @  0us seen 100% sweeps after 50% (1/2.0), 59 hits/s | @249us seen 100% sweeps after 51% (1/2.0), 476 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15383.160587298,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:97% 3:2% | @  0us seen 100% sweeps after 50% (1/2.0), 56 hits/s | @251us seen 100% sweeps after 51% (1/2.0), 507 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15384.163686422,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:96% 3:3% | @  0us seen 100% sweeps after 50% (1/2.0), 43 hits/s | @253us seen 100% sweeps after 52% (1/1.9), 513 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15385.166823797,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:97% 3:2% | @  0us seen 100% sweeps after 51% (1/2.0), 45 hits/s | @254us seen 100% sweeps after 51% (1/2.0), 510 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15386.169993613,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 51% (1/2.0), 34 hits/s | @254us seen 100% sweeps after 50% (1/2.0), 512 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15387.1732319,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 4 hits/s | @253us seen 100% sweeps after 50% (1/2.0), 506 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15388.176418758,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 2 hits/s | @252us seen 100% sweeps after 51% (1/2.0), 498 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15389.179462507,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 0 hits/s | @250us seen 100% sweeps after 51% (1/2.0), 499 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15390.182641647,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:97% 3:2% 4:0% | @  0us seen 100% sweeps after 50% (1/2.0), 27 hits/s | @249us seen 100% sweeps after 51% (1/2.0), 498 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15391.185811839,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:97% 3:2% 4:0% | @  0us seen 100% sweeps after 50% (1/2.0), 96 hits/s | @248us seen 100% sweeps after 51% (1/2.0), 499 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15392.189035482,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:95% 3:3% 4:0% | @  0us seen 100% sweeps after 50% (1/2.0), 163 hits/s | @248us seen 100% sweeps after 52% (1/1.9), 401 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15393.192328216,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:95% 3:4% 4:0% | @  0us seen 100% sweeps after 50% (1/2.0), 232 hits/s | @248us seen 100% sweeps after 52% (1/1.9), 280 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15394.195585821,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:94% 3:5% 4:0% | @  0us seen 100% sweeps after 50% (1/2.0), 281 hits/s | @250us seen 100% sweeps after 53% (1/1.9), 163 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15395.198853167,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:94% 3:5% 4:0% | @  0us seen 100% sweeps after 50% (1/2.0), 289 hits/s | @252us seen 100% sweeps after 53% (1/1.9), 36 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15396.202113385,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:97% 3:2% | @  0us seen 100% sweeps after 50% (1/2.0), 286 hits/s | @253us seen 100% sweeps after 52% (1/1.9), 17 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15397.205635934,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:96% 3:3% | @  0us seen 100% sweeps after 50% (1/2.0), 293 hits/s | @254us seen 100% sweeps after 51% (1/1.9), 15 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15398.209837245,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:93% 3:6% 4:0% | @  0us seen 100% sweeps after 50% (1/2.0), 293 hits/s | @256us seen 100% sweeps after 52% (1/1.9), 16 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15399.213298186,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:88% 3:11% 4:0% | @  0us seen 100% sweeps after 50% (1/2.0), 293 hits/s | @257us seen 100% sweeps after 54% (1/1.9), 37 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15400.216868678,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:86% 3:12% 4:0% | @  0us seen 100% sweeps after 50% (1/2.0), 304 hits/s | @256us seen 100% sweeps after 54% (1/1.9), 41 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15401.220114021,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:85% 3:13% 4:0% | @  0us seen 100% sweeps after 50% (1/2.0), 304 hits/s | @256us seen 100% sweeps after 54% (1/1.8), 46 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15402.223289925,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:88% 3:10% 4:0% | @  0us seen 100% sweeps after 50% (1/2.0), 304 hits/s | @254us seen 100% sweeps after 54% (1/1.9), 43 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15403.226463501,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:92% 3:7% 4:0% | @  0us seen 100% sweeps after 50% (1/2.0), 304 hits/s | @252us seen 100% sweeps after 52% (1/1.9), 24 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15404.229928797,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:92% 3:7% | @  0us seen 100% sweeps after 50% (1/2.0), 305 hits/s | @250us seen 100% sweeps after 52% (1/1.9), 23 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15405.233316835,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:94% 3:5% | @  0us seen 100% sweeps after 50% (1/2.0), 304 hits/s | @249us seen 100% sweeps after 52% (1/1.9), 36 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15406.236742644,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:96% 3:3% | @  0us seen 100% sweeps after 50% (1/2.0), 294 hits/s | @249us seen 100% sweeps after 51% (1/2.0), 30 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15407.239909763,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 317 hits/s | @249us seen 100% sweeps after 51% (1/2.0), 76 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15408.242982223,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 356 hits/s | @250us seen 100% sweeps after 50% (1/2.0), 152 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15409.246035605,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 385 hits/s | @251us seen 100% sweeps after 50% (1/2.0), 215 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15410.249352388,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 463 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 267 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15411.252644262,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 492 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 299 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15412.256401758,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 498 hits/s | @253us seen 100% sweeps after 50% (1/2.0), 299 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15413.259649804,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 515 hits/s | @252us seen 100% sweeps after 50% (1/2.0), 322 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15414.262844741,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 500 hits/s | @251us seen 100% sweeps after 50% (1/2.0), 372 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15415.26646706,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 491 hits/s | @250us seen 100% sweeps after 50% (1/2.0), 399 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15416.26984942,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 480 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 426 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15417.27299415,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 505 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 415 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15418.276621062,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 507 hits/s | @250us seen 100% sweeps after 50% (1/2.0), 394 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15419.279694115,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 516 hits/s | @250us seen 100% sweeps after 50% (1/2.0), 378 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15420.283361849,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 520 hits/s | @251us seen 100% sweeps after 51% (1/2.0), 372 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15421.286577594,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 491 hits/s | @252us seen 100% sweeps after 51% (1/2.0), 359 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15422.290489991,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 487 hits/s | @252us seen 100% sweeps after 51% (1/2.0), 370 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15423.293922038,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:98% 3:1% | @  0us seen 100% sweeps after 50% (1/2.0), 460 hits/s | @252us seen 100% sweeps after 51% (1/2.0), 379 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15424.297475236,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 473 hits/s | @251us seen 100% sweeps after 51% (1/2.0), 385 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15425.300623865,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 451 hits/s | @250us seen 100% sweeps after 51% (1/2.0), 426 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15426.303815005,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 446 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 414 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    },
+    {
+      "host_time": 15427.306954276,
+      "report": "  LHR-13DA81D1: 120 groups/s, flashes/group 2:99% 3:0% | @  0us seen 100% sweeps after 50% (1/2.0), 450 hits/s | @249us seen 100% sweeps after 50% (1/2.0), 436 hits/s | => multi stagger, slots relative to first: 0 1\n"
+    }
+  ],
+  "tool": "lhcapture"
+}

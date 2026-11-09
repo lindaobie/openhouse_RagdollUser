@@ -1,0 +1,11 @@
+{
+  "controller_type": "knuckles",
+  "description": "liblh integration probe",
+  "name": "liblh probe",
+  "bindings": {
+    "/actions/probe": {
+      "skeleton": [{"output": "/actions/probe/in/hand", "path": "/user/hand/right/input/skeleton/right"}],
+      "haptics": [{"output": "/actions/probe/out/haptic", "path": "/user/hand/right/output/haptic"}]
+    }
+  }
+}
