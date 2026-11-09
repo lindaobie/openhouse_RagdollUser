@@ -16,6 +16,7 @@
 /tools/flashes.txt
 /tools/flashes.err.txt
 /tools/coverage*.csv
+/tools/_selftest.csv
 
 # 5. 编译用的本机垫片（python3.exe 是 python 安装的转发器，脱离本机无效）
 /tools/bin/
@@ -29,3 +30,6 @@
 
 # 8. 临时分析脚本（开发过程中用过的，不对外）
 /tools/_scratch/
+# 9. 外壳的编译产物（源码要提交，bin/obj 不要）
+/shell/**/bin/
+/shell/**/obj/

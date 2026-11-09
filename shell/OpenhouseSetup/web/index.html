@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>openhouse setup</title>
+<link rel="stylesheet" href="app.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+<div class="app">
+
+  <div class="titlebar" id="titlebar">
+    <span class="tb-name">openhouse setup</span>
+    <span class="tb-ver mono" id="version"></span>
+    <div class="tb-btns">
+      <button class="tb-btn" id="btn-min" title="最小化">─</button>
+      <button class="tb-btn close" id="btn-close" title="关闭">✕</button>
+    </div>
+  </div>
+
+  <div class="busybar" id="busybar" hidden>
+    <span class="dot"></span>
+    <span id="busybar-text">正在进行…</span>
+    <button class="b stop" id="busybar-stop"><span>停止</span></button>
+  </div>
+
+  <div class="body">
+    <aside class="side">
+      <nav id="nav"></nav>
+      <div class="side-foot" id="side-foot">检测中…</div>
+    </aside>
+    <main id="view"></main>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="modal">
+    <div class="modal-badge">!</div>
+    <div class="modal-h">警告：请记录基站编号</div>
+    <div class="modal-stamp mono" id="modal-stamp">—</div>
+    <div class="modal-txt">请拿便签或贴纸，记录下这串数字。如果可能，你可以将此行编号写在贴纸上，然后将贴纸贴在基站上。</div>
+    <div class="modal-txt warn">如果没有标签，以后会分不清谁是谁，想要还原基站固件会受阻。</div>
+    <button class="b p" id="modal-ok">我记下了</button>
+  </div>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

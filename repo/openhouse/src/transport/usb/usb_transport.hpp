@@ -143,7 +143,12 @@ class UsbTransport {
   static bool QueryDeviceInfo(hid_device_* dev, DeviceInfo* info, int attempts = 20);
   static bool RequestProtocolVersion(hid_device_* dev, int version);
 
+#if defined(__GNUC__) || defined(__clang__)
   void Log(LogLevel level, const char* format, ...) __attribute__((format(printf, 3, 4)));
+#else
+  // MSVC has no printf-format attribute; its own format warnings cover the same ground.
+  void Log(LogLevel level, const char* format, ...);
+#endif
   IInputSink* sink_;
   UsbTransportOptions opts_;
   ReportDecoder decoder_;

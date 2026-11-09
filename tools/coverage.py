@@ -3,23 +3,32 @@
 
     python coverage.py [seconds] [out.csv]
 
-Run it while SteamVR + openhouse are running and you are actually playing.
-Ctrl-C stops early; the CSV is still written.
+Run it while SteamVR + openhouse are running, then walk the tracked device
+around the room: the point is where each base stops seeing it, so a run with
+the device sitting still only tells you about one spot.
 
-Output columns: t, device, base, frames_delta, sensors, bases_seen
-`frames_delta` is the number of new frames in that sample period (50 ms at 20 Hz),
-so summing a window and dividing by its length gives frames per second.
+The clock starts when a tracked device appears, not when the script does.
 
-Protocol: include/lh/telemetry.hpp in the openhouse repo. Newline-delimited JSON,
-about 20 state messages a second on 127.0.0.1:36840.
+How to read the numbers (include/lh/session.hpp, src/runtime/device_tracker.cpp)
+--------------------------------------------------------------------------------
+`coverage[].frames` is the number of frames that base lit in the last 0.5 s, and
+a base with no frames in that window is dropped from the list entirely -- its
+absence is the finding, not a zero. Sweeps per second are therefore frames / 0.5.
+
+A multi-station array splits 120 sweeps/s between its stations, so three bases
+give 40/s each and four give 30/s each. A base well under its share is either
+occluded from wherever the device is, or not sweeping at all.
+
+Output columns: t, device, base, frames_window, sensors, bases_seen
 """
 import csv
 import json
 import socket
 import sys
-import time
+from collections import defaultdict
 
 HOST, PORT = '127.0.0.1', 36840
+WINDOW = 0.5  # seconds of light the driver counts in `frames`
 
 
 def connect():
@@ -28,6 +37,7 @@ def connect():
             return socket.create_connection((HOST, PORT), timeout=5)
         except OSError:
             print('waiting for the driver on %s:%d ...' % (HOST, PORT))
+            import time
             time.sleep(2)
 
 
@@ -39,13 +49,13 @@ def main():
     sock.settimeout(5)
     stream = sock.makefile('r', encoding='utf-8', newline='\n')
 
-    prev = {}        # (device, base) -> cumulative frames
-    devices = {}     # serial -> role
     rows = []
+    devices = {}       # serial -> role
     t0 = None
-    last_print = 0.0
+    last_print = -1e9
 
     print('recording %.0f s to %s (Ctrl-C to stop)' % (duration, path))
+    print('waiting for a tracked device ...')
 
     try:
         while True:
@@ -56,7 +66,6 @@ def main():
                 sock = connect()
                 sock.settimeout(5)
                 stream = sock.makefile('r', encoding='utf-8', newline='\n')
-                prev.clear()
                 continue
 
             try:
@@ -66,34 +75,36 @@ def main():
             if msg.get('type') != 'state':
                 continue
 
-            now = msg['t']
+            live = [d for d in msg.get('devices', []) if d.get('connected')]
+
+            # A run that starts before anything is tracked burns its window on empty
+            # samples, so hold the clock until a device is actually being seen.
             if t0 is None:
-                t0 = now
+                if not any(d.get('basesSeen', 0) >= 1 for d in live):
+                    continue
+                t0 = msg['t']
+                print('  got %s, starting the clock' %
+                      ', '.join(d.get('serial', '?') for d in live))
+
+            now = msg['t']
             elapsed = now - t0
 
-            for dev in msg.get('devices', []):
-                if not dev.get('connected'):
-                    continue
+            for dev in live:
                 serial = dev['serial']
                 devices[serial] = dev.get('role', '?')
                 for cov in dev.get('coverage', []):
-                    key = (serial, cov['base'])
-                    old = prev.get(key)
-                    prev[key] = cov['frames']
-                    if old is not None and elapsed > 2:
-                        rows.append((round(elapsed, 2), serial, cov['base'],
-                                     cov['frames'] - old, cov.get('sensors', 0),
-                                     dev.get('basesSeen', 0)))
+                    rows.append((round(elapsed, 2), serial, cov['base'],
+                                 cov.get('frames', 0), cov.get('sensors', 0),
+                                 dev.get('basesSeen', 0)))
 
             if elapsed - last_print >= 30:
                 last_print = elapsed
                 print('  %5.0f s  %6d samples  %d devices' % (elapsed, len(rows), len(devices)))
-                # a live per-device line so you can see it working
-                for dev in msg.get('devices', []):
-                    if not dev.get('connected'):
-                        continue
-                    print('    %-10s %-14s basesSeen=%d' %
-                          (dev['serial'], dev.get('role', '?'), dev.get('basesSeen', 0)))
+                for dev in live:
+                    seen = ' '.join('%s=%.0f/s' % (c['base'][-8:], c['frames'] / WINDOW)
+                                    for c in dev.get('coverage', []))
+                    print('    %-10s %-8s basesSeen=%d  %s' %
+                          (dev['serial'], dev.get('role', '?'), dev.get('basesSeen', 0), seen))
 
             if elapsed >= duration:
                 break
@@ -107,22 +118,37 @@ def main():
 
     with open(path, 'w', newline='', encoding='utf-8') as fh:
         writer = csv.writer(fh)
-        writer.writerow(['t', 'device', 'base', 'frames_delta', 'sensors', 'bases_seen'])
+        writer.writerow(['t', 'device', 'base', 'frames_window', 'sensors', 'bases_seen'])
         writer.writerows(rows)
 
     print('wrote %d rows to %s' % (len(rows), path))
+    summarise(rows, devices)
 
-    # quick summary: frames per second per (device, base)
-    total = {}
-    for t, dev, base, delta, _sensors, _seen in rows:
-        total[(dev, base)] = total.get((dev, base), 0) + delta
-    span = max((r[0] for r in rows), default=1.0)
-    print('\nframes/s over the whole run (%.0f s):' % span)
-    bases = sorted({b for (_d, b) in total})
-    print('%-12s %s' % ('device', ' '.join('%10s' % b for b in bases)))
-    for dev in sorted({d for (d, _b) in total}):
-        cells = ['%10.1f' % (total.get((dev, b), 0) / span) for b in bases]
-        print('%-12s %s' % (dev, ' '.join(cells)))
+
+def summarise(rows, devices):
+    if not rows:
+        print('\nno coverage recorded: nothing was tracked long enough.')
+        return
+
+    span = max(r[0] for r in rows)
+    # Each sample carries a 0.5 s window, so the mean of the windows is a rate.
+    per = defaultdict(list)
+    times = defaultdict(set)
+    sample_times = defaultdict(set)
+    for t, dev, base, frames, _sensors, _seen in rows:
+        per[(dev, base)].append(frames)
+        times[(dev, base)].add(t)
+        sample_times[dev].add(t)
+
+    print('\nmean sweeps/s over %.0f s  (a base absent from a sample lit nothing in it)' % span)
+    for dev in sorted({d for (d, _b) in per}):
+        cells = [(b, sum(v) / len(v) / WINDOW) for (d, b), v in per.items() if d == dev]
+        total = sum(c[1] for c in cells) or 1.0
+        n = len(sample_times[dev]) or 1
+        print('  %s (%s), %d samples' % (dev, devices.get(dev, '?'), n))
+        for base, rate in sorted(cells, key=lambda c: -c[1]):
+            print('    %-14s %6.1f/s  %5.1f%% of the light   lit in %3.0f%% of samples'
+                  % (base, rate, 100 * rate / total, 100.0 * len(times[(dev, base)]) / n))
 
 
 if __name__ == '__main__':
