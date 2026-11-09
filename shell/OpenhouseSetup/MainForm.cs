@@ -16,8 +16,23 @@ public class MainForm : Form
         ClientSize = new Size(1000, 680);
         MinimumSize = new Size(880, 600);
         BackColor = Color.FromArgb(0x10, 0x11, 0x14);
-        Text = "openhouse setup";
+        Text = "openhouse UI";
         DoubleBuffered = true;
+
+        // The window icon is loaded from an embedded managed resource. Reading the exe
+        // stream directly does not work: ApplicationIcon stores a RT_GROUP_ICON there,
+        // not the raw .ico bytes that System.Drawing.Icon expects.
+        try
+        {
+            using var stream = typeof(MainForm).Assembly.GetManifestResourceStream("app.ico");
+            if (stream is not null)
+                Icon = new Icon(stream, 128, 128);
+        }
+        catch
+        {
+            // Missing or unreadable icon resource; the default window icon is acceptable.
+        }
+
 
         _web.Dock = DockStyle.Fill;
         _web.DefaultBackgroundColor = Color.FromArgb(0x10, 0x11, 0x14);

@@ -699,7 +699,7 @@ function renderLink(st) {
     '<div class="bs ' + x.cls + '">' +
       '<div class="bs-icon"><span class="lens"></span></div>' +
       '<div class="bs-ch">频道 ' + x.ch + '</div>' +
-      (x.ch === 1 ? '<div class="bs-tag">基站</div>' : '') +
+      (x.ch === 1 ? '<div class="bs-tag">主基站</div>' : '') +
       '<div class="bs-state">' + esc(x.state) + '</div>' +
     '</div>').join('');
 

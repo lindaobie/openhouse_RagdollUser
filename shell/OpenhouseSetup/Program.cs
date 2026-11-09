@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 
 namespace OpenhouseSetup;
@@ -49,7 +49,7 @@ public class HostBridge
 
     public void Close() => _form.Close();
 
-    public string Version() => "1.0.0-demo";
+    public string Version() => "1.1.1";
 
     // Lets a launcher (or a test) open on a given page: OPENHOUSE_PAGE=base.flash
     public string StartPage() => Environment.GetEnvironmentVariable("OPENHOUSE_PAGE") ?? "";
