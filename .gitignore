@@ -1,0 +1,22 @@
+# 只挡「本机专属」和「编译中间产物」。
+# 用户开箱需要的全部保留：固件镜像、驱动 DLL、apps 下的 exe、licenses、脚本、文档。
+
+# 1. 本机设备备份 —— 含 HTC 固件与工厂标定，无权分发
+/backups/
+/packages/firmware/openhouse-basestation-firmware/backups/
+
+# 2. 官方原始发布包（10 MB，用户不需要，我们自己的构建已经包含在内）
+/downloads/
+
+# 3. 上游源码树（单独 fork 维护，见 docs\laser-current-fix.patch）
+/repo/
+/repo/openhouse/basestation_firmware/build/
+/repo/openhouse/.git/
+
+# 4. 本机采集与测试输出
+/tools/flashes.txt
+/tools/flashes.err.txt
+/tools/coverage*.csv
+
+# 5. 编译用的本机垫片（python3.exe 是 python 安装的转发器，脱离本机无效）
+/tools/bin/
