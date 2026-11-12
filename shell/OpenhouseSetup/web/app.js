@@ -949,7 +949,7 @@ function renderAbout() {
     <div class="card">
       <div class="sec">联系与源码</div>
       <div class="kv"><span>QQ</span><b class="mono">1746723295</b></div>
-      <div class="kv"><span>仓库</span><b class="mono small">github.com/lindaobie/openhouse_RagdollUser</b></div>
+      <div class="kv"><span>仓库</span><b class="mono small">github.com/lindaobie/openhouse_with_GUI</b></div>
       <div class="kv"><span>上游</span><b class="mono small">github.com/YusufOzmen01/openhouse</b></div>
     </div>
   </div>
