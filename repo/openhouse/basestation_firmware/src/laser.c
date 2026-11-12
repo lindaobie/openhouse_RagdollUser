@@ -165,15 +165,10 @@ bool laser_init(void)
     if (!(isl_read(3) & 1)) ok = false;                     /* VSO in range */
     ok &= isl_channel_reg(1, 3, 0x50) && isl_channel_reg(0, 3, 0x50);
     ok &= isl_channel_reg(1, 1, 0x40) && isl_channel_reg(0, 1, 0x40);
-    /* stock laser_update_task: bias and drive current from the parameters */
-    /* A unit whose stored current was ratcheted down to ~1 by an old firmware cannot come
-     * back on its own: the power loop caps at boot_current + 60, so 1 cannot reach 30 mW and
-     * the base is declared faulty (red LED, never sweeps). The root cause is fixed
-     * (laser_boot_currents_for_save), but the damaged value stays in EEPROM, so treat a
-     * value under 40 as unset and fall back to the stock default. Healthy units run
-     * 117-172 and are unaffected. */
-    if (P.laser_0_current < 40) P.laser_0_current = 190;
-    if (P.laser_1_current < 40) P.laser_1_current = 190;
+    /* stock laser_update_task: bias and drive current from the parameters.
+     * A unit whose stored current was ratcheted down to ~1 is repaired in params_load
+     * (repair_laser_currents), which restores it from the factory partition or the stock
+     * default before this ever runs. */
     ok &= isl_channel_reg(isl_channel[0], 0, P.laser_0_bias);
     ok &= isl_channel_reg(isl_channel[1], 0, P.laser_1_bias);
     ok &= isl_channel_reg(isl_channel[0], 2, P.laser_0_current);

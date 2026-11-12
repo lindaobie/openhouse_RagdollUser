@@ -41,12 +41,10 @@
     "apps/liblh.dll"
   ],
   "firmware": {
-    "file": "lhbs-20261112-8D1687BBF161.bin",
-    "size": 51208,
-    "sha256": "8D1687BBF161E879",
+    "file": "lhbs-20261112-D930256358A9.bin",
+    "size": 51192,
+    "sha256": "D930256358A9",
     "compiler": "arm-none-eabi-gcc 13.2.1",
-    "local_patches": [
-      "src/laser.c: laser.*_current < 40 falls back to 190 (stock default), so a unit whose EEPROM was already ratcheted down can still reach 30 mW"
-    ]
+    "local_patches": []
   }
 }
