@@ -14,6 +14,12 @@
 </script>
 </head>
 <body>
+<script>
+  // Applied before the first paint so an English session does not flash Chinese labels.
+  try {
+    if (localStorage.getItem('oh_lang') === 'en') document.documentElement.lang = 'en';
+  } catch { }
+</script>
 <div class="app">
 
   <div class="titlebar" id="titlebar">
@@ -22,6 +28,7 @@
       <span class="tb-ver mono" id="version"></span>
     </div>
     <div class="tb-btns">
+      <button class="tb-btn lang" id="btn-lang" title="English">EN</button>
       <button class="tb-btn" id="btn-min" title="最小化">─</button>
       <button class="tb-btn close" id="btn-close" title="关闭">✕</button>
     </div>

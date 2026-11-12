@@ -1,4 +1,5 @@
 import { Map3D } from './map3d.js';
+import { t, currentLang, setLang, translateDom, translateText } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const host = window.chrome?.webview?.hostObjects?.host;
@@ -155,7 +156,8 @@ function paintSlots() {
       // No slot for this channel: the card and the row already say so.
     }
     if (card && card.className !== cls) card.className = cls;
-    if (stateEl && stateEl.textContent !== text) stateEl.textContent = text;
+    const tt = translateText(text);
+    if (stateEl && stateEl.textContent !== tt) stateEl.textContent = tt;
 
     const row = $('tqr' + ch);
     const usEl = $('tqu' + ch), seenEl = $('tqs' + ch), rotEl = $('tqo' + ch), stEl = $('tqx' + ch);
@@ -164,7 +166,7 @@ function paintSlots() {
       if (usEl) usEl.textContent = '—';
       if (seenEl) seenEl.textContent = '—';
       if (rotEl) rotEl.textContent = '—';
-      if (stEl) stEl.textContent = '没有信号';
+      if (stEl) stEl.textContent = translateText('没有信号');
       continue;
     }
     const seen = Math.round(s.seen);
@@ -174,11 +176,12 @@ function paintSlots() {
     if (usEl) usEl.textContent = s.us + ' µs';
     if (seenEl) seenEl.textContent = seen + '%';
     if (rotEl) rotEl.textContent = s.ratio || '—';
-    if (stEl && stEl.textContent !== label) stEl.textContent = label;
+    const lbl = translateText(label);
+    if (stEl && stEl.textContent !== lbl) stEl.textContent = lbl;
   }
 
   const tag = $('tq-tag');
-  const tagText = optRunning ? '采集中' : (slots.length ? slots.length + ' 个时间槽' : '未检查');
+  const tagText = translateText(optRunning ? '采集中' : (slots.length ? slots.length + ' 个时间槽' : '未检查'));
   if (tag && tag.textContent !== tagText) tag.textContent = tagText;
 }
 function paintDrv() { paintLines(drvLines, 'drvlog'); }
@@ -202,18 +205,18 @@ function renderNav() {
       
       return `<div class="item ${on ? 'on' : ''}" data-go="${n.id}">
       
-        <span class="g">${n.g}</span><span class="lbl">${n.label}</span></div>`;
+        <span class="g">${n.g}</span><span class="lbl">${t(n.label)}</span></div>`;
     }
     const open = openGroups[n.id];
     const active = route.startsWith(n.id + '.');
     const kids = n.children
       
-      .map((c) => `<div class="sub ${route === c.id ? 'on' : ''}" data-go="${c.id}">${c.label}</div>`)
+      .map((c) => `<div class="sub ${route === c.id ? 'on' : ''}" data-go="${c.id}">${t(c.label)}</div>`)
       
       .join('');
     return `<div class="item group ${active ? 'on' : ''}" data-toggle="${n.id}">
       
-        <span class="g">${n.g}</span><span class="lbl">${n.label}</span>
+        <span class="g">${n.g}</span><span class="lbl">${t(n.label)}</span>
       
         <span class="caret ${open ? 'up' : ''}">⌄</span></div>
       
@@ -949,8 +952,8 @@ function renderAbout() {
     <div class="card">
       <div class="sec">联系与源码</div>
       <div class="kv"><span>QQ</span><b class="mono">1746723295</b></div>
-      <div class="kv"><span>仓库</span><b class="mono small">github.com/lindaobie/openhouse_with_GUI</b></div>
-      <div class="kv"><span>上游</span><b class="mono small">github.com/YusufOzmen01/openhouse</b></div>
+      <div class="kv"><span>仓库</span><b class="mono small"><a href="https://github.com/lindaobie/openhouse_with_GUI" data-open="https://github.com/lindaobie/openhouse_with_GUI">github.com/lindaobie/openhouse_with_GUI</a></b></div>
+      <div class="kv"><span>上游</span><b class="mono small"><a href="https://github.com/YusufOzmen01/openhouse" data-open="https://github.com/YusufOzmen01/openhouse">github.com/YusufOzmen01/openhouse</a></b></div>
     </div>
   </div>
 
@@ -1040,6 +1043,7 @@ function renderView() {
     if (route === 'base.flash') paintRun();
     if (route === 'driver') paintDrv();
     if (route === 'track.quality') { paintHits(); paintSlots(); paintLink(); }
+    translateDom(view);
     return;
   }
   const keepScroll = view.scrollTop;
@@ -1064,6 +1068,8 @@ function renderView() {
   }
   if (route === 'track.quality') { paintHits(); paintSlots(); paintLink(); }
   if (route === 'base.map') { const c = $('map3d'); if (c) Map3D.show(c, st); } else { Map3D.hide(); }
+  // Last, so the counters painted above are translated too.
+  translateDom(view);
 }
 
 /* ------------------------------------------------------------------ polling */
@@ -1100,6 +1106,12 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('click', async (e) => {
+  const ol = e.target.closest('[data-open]');
+  if (ol) {
+    e.preventDefault();
+    host?.OpenUrl(ol.dataset.open);
+    return;
+  }
   const go = e.target.closest('[data-go]');
   if (go) { navigate(go.dataset.go); return; }
   const tg = e.target.closest('[data-toggle]');
@@ -1336,6 +1348,23 @@ function showWaitResult(kind) {
 }
 
 $('btn-min').addEventListener('click', () => host?.Minimize());
+
+// The button shows the language it will switch to, not the one in use.
+function updateLangBtn() {
+  const b = $('btn-lang');
+  if (b) b.textContent = currentLang() === 'en' ? '中' : 'EN';
+}
+$('btn-lang').addEventListener('click', () => {
+  setLang(currentLang() === 'en' ? 'zh' : 'en');
+  updateLangBtn();
+  // Everything visible is built from strings, so both the nav and the view have to be rebuilt
+  // from scratch: the cached markup still holds the previous language.
+  lastNavHtml = null;
+  lastHtml = '';
+  renderNav();
+  renderView();
+});
+updateLangBtn();
 // The label warning only closes on the button: it is the one thing the user must not skip.
 $('modal-ok').addEventListener('click', () => {
   if (waitOpen && !waitDone) return;   // the re-plug gate has no manual close

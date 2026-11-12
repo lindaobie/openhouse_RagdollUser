@@ -50,10 +50,20 @@ public class HostBridge
 
     public void Close() => _form.Close();
 
-    public string Version() => "1.2.0";
+    public string Version() => "1.2.2";
 
     // Lets a launcher (or a test) open on a given page: OPENHOUSE_PAGE=base.flash
     public string StartPage() => Environment.GetEnvironmentVariable("OPENHOUSE_PAGE") ?? "";
+
+    /// Opens a link in the user's browser. The page runs inside WebView2, where a plain
+    /// anchor would navigate the app itself away from its own UI.
+    public void OpenUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return;
+        if (!url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch { }
+    }
 
     /// Opens the streaming subscription the map page uses; harmless if already open.
     public void StartLive() => Probe.StartLive();

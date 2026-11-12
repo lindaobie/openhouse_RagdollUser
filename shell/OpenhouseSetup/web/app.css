@@ -319,31 +319,36 @@ main { flex: 1; padding: 18px 22px 26px; overflow-y: auto; min-width: 0; }
 .mtable { border-top: 1px solid var(--line); font-size: 11px; }
 .mtr {
   display: grid;
-  grid-template-columns: 40px 118px 56px 72px 64px 64px 64px minmax(96px, 1fr);
-  align-items: center; gap: 7px;
-  padding: 7px 2px; border-bottom: 1px solid var(--line-soft);
+  /* Proportional: the columns share the row, so no empty strip is left after the last one. */
+  grid-template-columns: 0.55fr 1.7fr 0.75fr 0.95fr 1fr 1fr 1fr 1.2fr;
+  align-items: center; gap: 10px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line-soft);
   font-family: "Cascadia Mono", Consolas, monospace;
   font-variant-numeric: tabular-nums;
   overflow: hidden;
 }
+.mtr span { text-align: center; }
+.mtr .c-id { text-align: left; }
 .mtr.mth {
   font-size: 10px; color: var(--ink-faint); letter-spacing: .08em;
   font-family: "Noto Sans SC", "Segoe UI", sans-serif;
 }
 .mtr .c-id { color: #e2e5ea; }
 .mtr .c-ch { color: var(--ink-dim); }
-.mtr .c-n { color: var(--ink-dim); text-align: right; }
+.mtr .c-n { color: var(--ink-dim); }
 .mtr .c-n.bad { color: var(--warn); }
 .mtr .c-lit { color: var(--ink-faint); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mtr .c-fps { color: var(--accent); font-size: 12.5px; font-weight: 600; text-align: right; letter-spacing: -.01em; }
+.mtr .c-fps { color: var(--accent); font-size: 12.5px; font-weight: 600; letter-spacing: -.01em; }
 .mtr .c-fps i { font-style: normal; font-size: 10px; font-weight: 400; color: rgba(224,121,90,.6); margin-left: 1px; }
 .mtr.mth .c-fps { color: inherit; }
 /* header cells follow the alignment of the data they label */
 .mtr.mth span { white-space: nowrap; }
-.mtr.mth span:nth-child(3), .mtr.mth span:nth-child(4),
-.mtr.mth span:nth-child(5), .mtr.mth span:nth-child(6), .mtr.mth span:nth-child(7) { text-align: right; }
 .mtr .c-st { font-size: 11px; color: var(--ink-dim); }
 .mtr .pill { font-size: 10.5px; padding: 1px 7px; }
+
+/* Links inside the About card open in the system browser. */
+.kv a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(224,121,90,.35); }
+.kv a:hover { border-bottom-color: var(--accent); }
 
 /* ---- empty ---- */
 .empty { padding: 60px 20px; text-align: center; }
