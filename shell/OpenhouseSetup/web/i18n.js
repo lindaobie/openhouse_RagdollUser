@@ -240,6 +240,74 @@ const EN = {
 
   // ---- log
   '演示版，只读': 'demo build, read-only',
+
+  // ---- remaining UI strings
+  '房间里还没有基站': 'No base stations in the room yet',
+  '上电、设好频道之后会自己出现': 'They appear once powered and set to a channel',
+  '下次刷写时会重新校验。': 'They are checked again on the next flash.',
+  '中': '中',
+  '停止失败：': 'Stop failed: ',
+  '停止检查…': 'Stopping…',
+  '再点一次确认写入。': 'Click again to confirm the write.',
+  '只读检查…': 'Read-only check…',
+  '固件': 'Firmware',
+  '固件已写入，还差一步': 'Firmware written, one step left',
+  '固件已经写进基站，读回来的内容和镜像一致。': 'The firmware is on the station and the read-back matches the image.',
+  '复制失败，浏览器不允许访问剪贴板': 'Copy failed: the browser blocked clipboard access',
+  '安装驱动：会先结束 Steam 进程': 'Install driver: the Steam processes will be closed first',
+  '宿主桥接没起来': 'The host bridge is not available',
+  '已复制': 'Copied',
+  '建议重新刷一次。': 'Flashing it again is recommended.',
+  '开始刷写…': 'Flashing…',
+  '开始检查追踪质量…': 'Starting the quality check…',
+  '操作': 'operation',
+  '未知页面': 'Unknown page',
+  '校验没通过': 'Verification failed',
+  '校验通过': 'Verified',
+  '检查追踪质量': 'Checking tracking quality',
+  '正在找原始固件…': 'Looking for the stock firmware…',
+  '正在等基站重新接上': 'Waiting for the station to come back',
+  '没有可画的基站': 'No station to draw',
+  '没有完成校验': 'Not verified',
+  '没有找到 SteamVR': 'SteamVR not found',
+  '知道了': 'Got it',
+  '确定': 'OK',
+  '确认写入': 'Confirm write',
+  '确认后会把备份的原始固件写回去。': 'Confirming writes the backed-up stock firmware back.',
+  '等基站重新接上、校验通过之后，刷写页才会解除锁定。':
+    'The flashing page stays locked until the station is back and verification passes.',
+  '等待基站重新接上…': 'Waiting for the station to reconnect…',
+  '读回来的内容和镜像对不上。': 'The read-back does not match the image.',
+  '超时没等到基站重新接上，这次没有校验。': 'Timed out waiting for the station; this run was not verified.',
+  '还原 SteamVR 原驱动': 'Restore the SteamVR driver',
+  '还原：备份的原始固件': 'Restore: the backed-up stock firmware',
+  '条日志': 'log lines',
+
+  // ---- misc
+  '操作进行中…': 'Working…',
+  '本版未改动': 'Unchanged in this build',
+  '正在读取…': 'Reading…',
+  '没有找到固件镜像': 'No firmware image found',
+  '渲染失败': 'Render failed',
+  '① 拔掉 USB 和电源': '1. Unplug USB and power',
+  '① 按住背面按钮，不要松': '1. Hold the button on the back',
+  '② 按住背面按钮，不要松': '2. Hold the button on the back',
+  '② 插 micro-USB': '2. Plug in micro-USB',
+  '③ 插 micro-USB': '3. Plug in micro-USB',
+  '③ 插电源，然后松手': '3. Power on, then release',
+  '④ 插电源，然后松手': '4. Power on, then release',
+  '后台在等设备：拔掉 USB 和电源、按原步骤重新插一次，它才会自己完成校验。':
+    'Waiting for the device: unplug USB and power, plug them back in the same order, and the check completes on its own.',
+  // ---- stock firmware gate
+  '先备份原始固件': 'Back up stock first',
+  '备份一份原始固件之后才能刷写。同一份可以给所有基站用。':
+    'Flashing stays locked until one stock image is backed up. The same image serves every station.',
+  '还没有原始固件备份': 'No stock firmware backup yet',
+  '找一台还没刷过破解固件的基站，按上面四步接上，再点下面的按钮。':
+    'Take a station that still runs stock firmware, follow the four steps above, then click the button below.',
+  '手头没有这样的基站，也会从之前的备份里找一份。':
+    'If no such station is at hand, a previous backup is used instead.',
+  '备份原始固件': 'Back up stock firmware',
   'openhouse setup · 演示版，只读': 'openhouse setup · demo build, read-only',
   '已刷新': 'Refreshed',
   '给 HTC Vive 一代基站的图形化工具：刷固件、装驱动、看摆位。':
@@ -328,6 +396,24 @@ const EN_PATTERNS = [
   [/^这台报了 (\d+) 个故障$/, 'This station reports $1 faults'],
   [/^查看详情$/, 'Details'],
   [/(\d+) 台(?=\s|·|$)/g, '$1'],
+  [/^频道 (\S+) 的基站报了 (\d+) 个故障.*$/, 'Channel $1 reports $2 faults'],
+  [/^(.+?) ?正在进行，请完成当前的(.+?)操作.*$/, '$1 is running; finish it before starting another.'],
+  [/^(.+?) ?还没结束$/, '$1 is still running'],
+  [/^没有收到频道 (\S+) 的基站。.*$/, 'No signal from channel $1. Check power, the indicator on the back and the channel setting.'],
+  [/^没有设备收到频道 (\S+) 的基站的光。.*$/, 'No device receives light from channel $1. Move the tracker into its beam and wave it for a few seconds.'],
+  [/^(.+) 详情$/, '$1 details'],
+  [/^(\d+) 台 · (\d+) 个设备$/, '$1 stations · $2 devices'],
+  [/^(\d+) 条日志$/, '$1 log lines'],
+  [/^读取失败：(.+)$/, 'Read failed: $1'],
+  [/^停止失败：(.+)$/, 'Stop failed: $1'],
+  [/^(.+) 个设备能收到它的光$/, '$1 devices receive its light'],
+  [/^(.+) 还没结束$/, '$1 is still running'],
+  [/^(.+) 正在进行，请完成当前的(.+)操作，再进行其他操作。$/,
+    '$1 is running; finish the current $2 operation before starting another.'],
+  [/^(.+)在闪，但没有设备收到它的光。检查它和主站之间有没有遮挡、正面是否对着主站。$/,
+    '$1 flashes but no device receives its light. Check for an obstruction between it and the master, and that its face points at the master.'],
+  [/^(.+)没有锁定 tracker，请拿着 tracker 在它的照射范围内晃动数秒，直至基站锁定 tracker。$/,
+    '$1 has not locked the tracker. Wave the tracker inside its beam until it does.'],
   [/^(\d+) 台基站都在同一套时序里，间隔连续，没有缺席。$/, 'All $1 stations share one timebase with even spacing.'],
 ];
 
@@ -348,7 +434,18 @@ function translateText(text) {
   // a bare counter inside a longer sentence does not short-circuit the phrase pass.
   for (const [re, rep] of EN_PATTERNS) {
     if (re.global) continue;
-    if (re.test(key)) return text.replace(key, key.replace(re, rep));
+    const m = key.match(re);
+    if (!m) continue;
+    let done = key.replace(re, rep);
+    // What the pattern captured is often a label that has its own entry
+    // ("检查追踪质量 is still running").
+    for (let i = 1; i < m.length; i++) {
+      const cap = m[i];
+      if (!cap) continue;
+      const translated = EN[cap] ?? translateText(cap);
+      if (translated !== cap) done = done.split(cap).join(translated);
+    }
+    return text.replace(key, done);
   }
 
   // No whole sentence match: several strings are assembled from pieces ("1 · 已开启",

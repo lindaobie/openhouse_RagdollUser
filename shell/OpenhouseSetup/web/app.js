@@ -752,7 +752,7 @@ function renderStockGate(st, crp, hasCrp) {
     <div class="gate-mark"></div>
     <div>
       <b>还没有原始固件备份</b>
-      <p>找一台<b>还没刷过破解固件</b>的基站，按上面四步接上，再点下面的按钮。</p>
+      <p>找一台还没刷过破解固件的基站，按上面四步接上，再点下面的按钮。</p>
       <p class="dim">手头没有这样的基站，也会从之前的备份里找一份。</p>
     </div>
   </div>
