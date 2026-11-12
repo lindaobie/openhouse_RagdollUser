@@ -108,15 +108,17 @@ public class MainForm : Form
         Native.SendMessage(Handle, Native.WM_NCLBUTTONDOWN, Native.HTCAPTION, IntPtr.Zero);
     }
 
-    /// Progress lines from a background write operation, delivered to the page.
-    public void PostMessage(string text, string level)
+    /// Progress lines from a background write operation, delivered to the page. The operation
+    /// name travels with each line so the page can route it to the right log: a layout check
+    /// and a flash must not share one buffer.
+    public void PostMessage(string text, string level, string op)
     {
         if (IsDisposed || !IsHandleCreated) return;
         try
         {
             BeginInvoke(() =>
             {
-                var json = System.Text.Json.JsonSerializer.Serialize(new { text, level });
+                var json = System.Text.Json.JsonSerializer.Serialize(new { text, level, op });
                 _web.CoreWebView2?.PostWebMessageAsJson(json);
             });
         }
@@ -140,21 +142,6 @@ public class MainForm : Form
             BeginInvoke(() =>
             {
                 var json = System.Text.Json.JsonSerializer.Serialize(new { busy, label });
-                _web.CoreWebView2?.PostWebMessageAsJson(json);
-            });
-        }
-        catch { }
-    }
-
-    /// The label prompt after a flash: the timestamp has to end up on the unit itself.
-    public void PostModal(string stamp)
-    {
-        if (IsDisposed || !IsHandleCreated) return;
-        try
-        {
-            BeginInvoke(() =>
-            {
-                var json = System.Text.Json.JsonSerializer.Serialize(new { modal = new { stamp } });
                 _web.CoreWebView2?.PostWebMessageAsJson(json);
             });
         }

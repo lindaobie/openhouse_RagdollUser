@@ -8,6 +8,7 @@ static class Program
     [STAThread]
     static void Main()
     {
+        Log.Open();
         ApplicationConfiguration.Initialize();
         Application.Run(new MainForm());
     }
@@ -49,7 +50,7 @@ public class HostBridge
 
     public void Close() => _form.Close();
 
-    public string Version() => "1.1.1";
+    public string Version() => "1.2.0";
 
     // Lets a launcher (or a test) open on a given page: OPENHOUSE_PAGE=base.flash
     public string StartPage() => Environment.GetEnvironmentVariable("OPENHOUSE_PAGE") ?? "";
@@ -112,7 +113,101 @@ public class HostBridge
         return arr.ToJsonString();
     }
 
-    private void Emit(string text, string level = "") => _form.PostMessage(text, level);
+    /// Archives the factory application image — once per distinct version, shared by the whole
+    /// fleet. Sources are tried in order: the station currently in ISP mode, then every
+    /// historical dump that still holds factory bytes rather than a patched build. Returns "".
+    public string ExtractStock()
+    {
+        if (_busy) return Busy("等它跑完");
+
+        var fwDir = Probe.FirmwareDir();
+        if (fwDir is null) return "找不到 firmware 目录";
+
+        var found = new Dictionary<string, (byte[] app, string src)>();
+
+        void Consider(byte[] dump, string source)
+        {
+            var app = FactoryPart(dump);
+            if (app is null) return;
+            var h = Flashing.Sha(app)[..12];
+            if (!found.ContainsKey(h)) found[h] = (app, source);
+        }
+
+        var drive = Flashing.FindCrp(out _);
+        if (drive is not null)
+        {
+            try { Consider(File.ReadAllBytes(Path.Combine(drive + "\\", "firmware.bin")), $"当前接着的基站 {drive}"); }
+            catch (Exception e) { return "读不到设备里的固件：" + e.Message; }
+        }
+
+        var dir = BackupDir();
+        if (dir.Length > 0 && Directory.Exists(dir))
+        {
+            foreach (var f in Directory.GetFiles(dir, "*.bin").OrderByDescending(f => f))
+            {
+                try { Consider(File.ReadAllBytes(f), "历史备份 " + Path.GetFileName(f)); }
+                catch { }
+            }
+        }
+
+        if (found.Count == 0)
+        {
+            Emit("没找到原始固件：换一台没刷过破解固件的基站接上再试，或者把之前的备份放回 backups 目录。", "warn");
+            return "没有可备份的原始固件";
+        }
+
+        try
+        {
+            Directory.CreateDirectory(fwDir);
+            foreach (var kv in found.OrderBy(k => k.Key))
+            {
+                var name = "stock-" + kv.Key + ".bin";
+                var target = Path.Combine(fwDir, name);
+                if (!File.Exists(target)) File.WriteAllBytes(target, kv.Value.app);
+                Emit($"已备份原始固件 {name} · {kv.Value.app.Length} 字节 · 来自{kv.Value.src}", "ok");
+            }
+            return "";
+        }
+        catch (Exception e) { return "写入失败：" + e.Message; }
+    }
+
+    /// The factory application bytes inside a flash dump, or null when the dump already holds
+    /// one of our patched builds — archiving a cracked image as "原始固件" would be worse than
+    /// archiving nothing at all.
+    private static byte[]? FactoryPart(byte[] dump)
+    {
+        if (dump.Length < Flashing.AppBytes) return null;
+        var app = dump.AsSpan(0, Flashing.AppBytes).ToArray();
+        if (!Flashing.VectorsOk(app)) return null;
+        if (Probe.IsPatchImage(app)) return null;
+        return app;
+    }
+
+    private void Emit(string text, string level = "")
+    {
+        var tag = string.IsNullOrEmpty(level) ? "INFO"
+            : level.StartsWith("wait", StringComparison.Ordinal) || level == "countdown" ? "WAIT"
+            : level.ToUpperInvariant();
+        if (!string.IsNullOrEmpty(text)) Log.Write(tag, text);
+        _form.PostMessage(text, level, _op);
+    }
+
+    /// Where this run's log is, shown on the log page so it can be handed to someone else.
+    public string LogDir() => Log.Dir ?? "";
+
+    public void OpenLogDir()
+    {
+        var dir = Log.Dir;
+        if (dir is null) return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(dir)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch { }
+    }
 
     private static string? FindRepoRoot()
     {
@@ -142,35 +237,33 @@ public class HostBridge
         var drive = Flashing.FindCrp(out var label);
         if (drive is null) { Emit("没有检测到 CRP 设备", "warn"); return; }
 
-        var path = FirmwarePath(name) ?? (Path.IsPathRooted(name) && File.Exists(name) ? name : null);
-        if (kind == "restore")
+        // Nothing is written until a factory image has been archived. That image is identical on
+        // every unit, so one copy covers them all — but without it there is no way back, and the
+        // point of the gate is that the decision is made before any flashing, not after.
+        var stock = Probe.StockPath();
+        if (stock is null)
         {
-            var dir0 = BackupDir();
-            path = dir0.Length == 0 ? null : Path.Combine(dir0, name);
-            if (path is null || !File.Exists(path)) { Emit("找不到备份 " + name, "warn"); return; }
+            Emit("还没有备份原始固件，刷写功能锁着。先在本页点「备份原始固件」。", "warn");
+            return;
         }
+
+        // A restore no longer asks which backup: they all contain the same application bytes.
+        var path = kind == "restore"
+            ? stock
+            : FirmwarePath(name) ?? (Path.IsPathRooted(name) && File.Exists(name) ? name : null);
         if (path is null) { Emit("找不到镜像 " + name, "warn"); return; }
 
         var image = File.ReadAllBytes(path);
-        if (kind == "restore")
+
+        // Both paths write the application area and stop there. Everything past 49,664 bytes —
+        // the leftover stock code, the snapshot sectors, the EEPROM dump — is left untouched.
+        if (image.Length != Flashing.AppBytes)
         {
-            // A backup is a whole flash dump, so it has to be exactly that size.
-            if (image.Length != Flashing.FlashBytes)
-            {
-                Emit($"备份大小 {image.Length} 字节，不是完整的 128 KB，拒绝写入", "warn");
-                return;
-            }
-            if (Flashing.ReadProtected(image))
-            {
-                Emit("这份备份带读保护字（0x2FC），写回去会把 USB 引导锁死，拒绝", "warn");
-                return;
-            }
+            Emit($"镜像 {image.Length} 字节，不是 {Flashing.AppBytes}，拒绝写入", "warn");
+            return;
         }
-        else
-        {
-            if (!Flashing.VectorsOk(image)) { Emit("镜像向量校验不通过，拒绝写入", "warn"); return; }
-            if (Flashing.ReadProtected(image)) { Emit("镜像带读保护字（0x2FC），写入会把 USB 引导永久锁死，拒绝", "warn"); return; }
-        }
+        if (!Flashing.VectorsOk(image)) { Emit("镜像向量校验不通过，拒绝写入", "warn"); return; }
+        if (Flashing.ReadProtected(image)) { Emit("镜像带读保护字（0x2FC），写入会把 USB 引导永久锁死，拒绝", "warn"); return; }
 
         Emit($"镜像 {Path.GetFileName(path)} · {image.Length} 字节 · {Flashing.Sha(image)[..16]}");
         Emit($"设备 {drive} · {label}");
@@ -188,14 +281,9 @@ public class HostBridge
             return;
         }
 
-        // Back up before anything is written: this is the only copy of what is in there now.
-        var dir = BackupDir();
-        if (dir.Length == 0) { Emit("找不到备份目录，拒绝写入", "warn"); return; }
-        Directory.CreateDirectory(dir);
-        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-        var backup = Path.Combine(dir, $"firmware-{stamp}.bin");
-        File.WriteAllBytes(backup, current);
-        Emit($"已备份到 backups\\{Path.GetFileName(backup)}", "ok");
+        // No dump is taken here. The factory image is archived once, and every remaining byte of
+        // a 128 KB backup is either identical to a known image or sits in sectors this write
+        // cannot reach, so per-write copies only ever produced duplicates.
         if (Flashing.SamePrefix(image, current, image.Length))
         {
             Emit(kind == "restore" ? "盘内已经就是这份备份的内容，不需要写" : "盘内已经是这个固件，不需要写", "ok");
@@ -205,11 +293,9 @@ public class HostBridge
         Emit("写入中…");
         Flashing.WriteImage(drive, image);
         Emit("写入完成，弹出设备", "ok");
-        // Only a flash needs the label: a restore puts back what the unit already was.
-        if (kind == "flash") _form.PostModal(stamp);
         Flashing.Eject(drive);
 
-        Emit("固件刷写成功，准备验证。请拔掉 USB 和电源，按原步骤重新插一次。", "warn");
+        Emit("固件已写入。请拔掉基站上的所有线（USB 和电源），再按上面 4 步重新接一次。", "wait");
 
         // The ROM volume remounts within a second of the eject, so waiting for "present"
         // passes instantly and silently reads a cached copy. Require it to be absent for
@@ -231,7 +317,7 @@ public class HostBridge
             if (!unplugged && absent >= 4)
             {
                 unplugged = true;
-                Emit("已检测到拔出。现在按四步重新插上：按住背面按钮 → 插 USB → 插电源 → 松手", "ok");
+                Emit("已检测到拔出。现在重新接上：按住背面按钮 → 插 USB → 插电源 → 松手", "wait-step");
             }
             else if (unplugged && present)
             {
@@ -245,15 +331,15 @@ public class HostBridge
                 var left = deadline - DateTime.UtcNow;
                 var stamp2 = $"{(int)left.TotalMinutes}:{left.Seconds:00}";
                 Emit(unplugged
-                    ? $"固件已写入，等待重新插上以校验（剩余 {stamp2}）"
-                    : $"固件刷写成功，请拔掉 USB 和电源后按原步骤重新插一次（剩余 {stamp2}）", "warn");
+                    ? $"已经拔掉了。按上面 4 步重新接：按住背面按钮 → 插 USB → 插电源 → 松手（剩余 {stamp2}）"
+                    : $"固件已写入。请拔掉基站上的所有线（USB 和电源），再按上面 4 步重新接一次。（剩余 {stamp2}）", "countdown");
             }
             Thread.Sleep(1000);
         }
 
         if (again is null)
         {
-            Emit("超时：10 分钟内没有完成重新插拔，这次校验没有做。下次刷写时会重新校验。", "warn");
+            Emit("超时：10 分钟内没有完成重新插拔，这次校验没有做。下次刷写时会重新校验。", "wait-timeout");
             return;
         }
 
@@ -271,16 +357,16 @@ public class HostBridge
 
         if (matched)
         {
-            Emit("校验通过：flash 里就是刚写进去的镜像，刷写完成。", "ok");
+            Emit("校验通过：flash 里就是刚写进去的镜像，刷写完成。", "wait-ok");
             Emit("拔下基站，正常接电源（不要按背面按钮），它就会用新固件启动");
         }
         else if (Flashing.SamePrefix(current, check, Math.Min(current.Length, check.Length)))
         {
-            Emit("写入没有落到 flash：读回的仍然是刷写前的内容。请重新刷一次。", "warn");
+            Emit("写入没有落到 flash：读回的仍然是刷写前的内容。请重新刷一次。", "wait-fail");
         }
         else
         {
-            Emit("校验失败：读回的内容和镜像不一致", "warn");
+            Emit("校验失败：读回的内容和镜像不一致", "wait-fail");
         }
         Flashing.Eject(again);
     }

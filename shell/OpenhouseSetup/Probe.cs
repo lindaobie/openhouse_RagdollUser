@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -23,10 +24,60 @@ internal static class Probe
             ["crp"] = Crp(),
             ["firmware"] = Firmware(),
             ["backups"] = Backups(),
+            ["stock"] = Stock(),
+            ["logdir"] = Log.Dir ?? "",
             ["telemetry"] = Telemetry(),
             ["time"] = DateTime.Now.ToString("HH:mm:ss"),
         };
         return o;
+    }
+
+    // ---- collapsing the Explorer window the ROM volume opens by itself ----
+    private const int SwMinimize = 6;
+    private static readonly HashSet<IntPtr> Minimized = new();
+    private static string? _minimizeTitle;
+
+    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int max);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hwnd, int cmd);
+
+    // Held in a static field: a delegate that only lives on the stack can be collected while
+    // EnumWindows is still walking the window list.
+    private static readonly EnumWindowsProc MinimizeProc = (hwnd, _) =>
+    {
+        if (!IsWindowVisible(hwnd)) return true;
+        var sb = new StringBuilder(260);
+        if (GetWindowText(hwnd, sb, sb.Capacity) <= 0) return true;
+        if (_minimizeTitle is null) return true;
+        if (!sb.ToString().Contains(_minimizeTitle, StringComparison.OrdinalIgnoreCase)) return true;
+        // Once per window: somebody who deliberately restores it should be left alone.
+        if (Minimized.Add(hwnd)) ShowWindow(hwnd, SwMinimize);
+        return true;
+    };
+
+    private static void MinimizeExplorerWindows(string title)
+    {
+        _minimizeTitle = title;
+        try
+        {
+            Minimized.RemoveWhere(h => !IsWindow(h));
+            EnumWindows(MinimizeProc, IntPtr.Zero);
+        }
+        catch { }
+        finally { _minimizeTitle = null; }
     }
 
     /// The station sitting in ISP mode mounts a ROM-emulated FAT volume with the current
@@ -43,6 +94,9 @@ internal static class Probe
 
             o["letter"] = d.Name.TrimEnd('\\');
             o["label"] = label;
+            // Windows opens a File Explorer window on the ROM volume every time it appears.
+            // That is never the next thing anyone wants, so fold it away once.
+            MinimizeExplorerWindows(label);
             var file = Path.Combine(d.Name, "firmware.bin");
             if (!File.Exists(file)) return o;
             try
@@ -53,6 +107,12 @@ internal static class Probe
                 // The dump is the whole 128 KB flash; an image is only its first part, so
                 // comparing whole-file hashes would always say "different".
                 o["matches"] = MatchImage(bytes) ?? "";
+                // What the unit is actually running right now. Decided from the application
+                // area alone: the banner strings are the only thing that separates the two
+                // kinds of build, and they are far more reliable than a filename.
+                var app = bytes.Length >= Flashing.AppBytes
+                    ? bytes.AsSpan(0, Flashing.AppBytes).ToArray() : null;
+                o["kind"] = app is null ? "unknown" : IsPatchImage(app) ? "patch" : "stock";
             }
             catch (Exception e)
             {
@@ -93,8 +153,9 @@ internal static class Probe
                 }
                 else
                 {
-                    var head = System.Text.Encoding.ASCII.GetString(bytes, 0, Math.Min(65536, bytes.Length));
-                    if (head.Contains("lhbs ")) { entry["kind"] = "破解固件"; entry["detail"] = "其他版本"; }
+                    var app = bytes.Length >= Flashing.AppBytes
+                        ? bytes.AsSpan(0, Flashing.AppBytes).ToArray() : bytes;
+                    if (IsPatchImage(app)) { entry["kind"] = "破解固件"; entry["detail"] = "其他版本"; }
                     else { entry["kind"] = "原厂类固件"; entry["detail"] = ""; }
                 }
             }
@@ -115,20 +176,59 @@ internal static class Probe
         return null;
     }
 
-    private static string? FirmwareDir()
+    internal static string? FirmwareDir()
     {
         var root = FindRepoRoot();
         return root is null ? null
             : Path.Combine(root, "packages", "firmware", "openhouse-basestation-firmware", "firmware");
     }
 
-    /// Which known image this flash dump starts with, if any.
+    /// The one archived factory image, if there is one. Named by content hash so a second copy
+    /// of the same bytes can never appear: every factory unit ships the identical 49,408 bytes.
+    internal static string? StockPath()
+    {
+        var dir = FirmwareDir();
+        if (dir is null || !Directory.Exists(dir)) return null;
+        foreach (var f in Directory.GetFiles(dir, "stock-*.bin").OrderBy(f => f))
+        {
+            try { if (new FileInfo(f).Length == Flashing.AppBytes) return f; }
+            catch { }
+        }
+        return null;
+    }
+
+    /// True when these bytes are one of the patched builds we ship. Used to tell a factory
+    /// image apart from a cracked one when deciding what is worth archiving.
+    internal static bool IsPatchImage(byte[] app)
+    {
+        if (app.Length != Flashing.AppBytes) return false;
+        var dir = FirmwareDir();
+        if (dir is not null && Directory.Exists(dir))
+        {
+            foreach (var f in Directory.GetFiles(dir, "lhbs-*.bin"))
+            {
+                try
+                {
+                    if (File.ReadAllBytes(f).AsSpan().SequenceEqual(app)) return true;
+                }
+                catch { }
+            }
+        }
+        // Older builds are no longer in firmware/ but they all carry the same banner.
+        var head = System.Text.Encoding.ASCII.GetString(app, 0, Math.Min(65536, app.Length));
+        return head.Contains("lhbs ");
+    }
+
+    /// Which known patched image this flash dump starts with, if any. The archived factory
+    /// image is deliberately skipped: it is not something you flash as a patch, and matching
+    /// against it would mislabel every factory backup.
     private static string? MatchImage(byte[] dump)
     {
         var dir = FirmwareDir();
         if (dir is null || !Directory.Exists(dir)) return null;
         foreach (var f in Directory.GetFiles(dir, "*.bin"))
         {
+            if (Path.GetFileName(f).StartsWith("stock-", StringComparison.OrdinalIgnoreCase)) continue;
             try
             {
                 var img = File.ReadAllBytes(f);
@@ -140,6 +240,27 @@ internal static class Probe
         return null;
     }
 
+    /// Whether a factory image has been archived yet. Recalculated on every poll rather than
+    /// remembered, so deleting the file outside the app puts the gate back immediately.
+    private static JsonObject Stock()
+    {
+        var o = new JsonObject();
+        var path = StockPath();
+        if (path is null) { o["ok"] = false; return o; }
+        var info = new FileInfo(path);
+        o["ok"] = true;
+        o["file"] = info.Name;
+        o["size"] = info.Length;
+        o["date"] = info.LastWriteTime.ToString("yyyy-MM-dd HH:mm");
+        try
+        {
+            o["sha"] = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path)))[..12];
+        }
+        catch { o["sha"] = ""; }
+        return o;
+    }
+
     private static JsonArray Firmware()
     {
         var arr = new JsonArray();
@@ -148,6 +269,7 @@ internal static class Probe
         foreach (var f in Directory.GetFiles(dir, "*.bin"))
         {
             var info = new FileInfo(f);
+            if (info.Name.StartsWith("stock-", StringComparison.OrdinalIgnoreCase)) continue;
             var entry = new JsonObject
             {
                 ["name"] = info.Name,

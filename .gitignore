@@ -33,3 +33,9 @@
 # 9. 外壳的编译产物（源码要提交，bin/obj 不要）
 /shell/**/bin/
 /shell/**/obj/
+
+# 10. 归档的原始固件（HTC 的固件，不能随仓库分发）
+/packages/firmware/openhouse-basestation-firmware/firmware/stock-*.bin
+
+# 11. 历史 dump 的任何一份拷贝（含序列号与激光标定）
+/packages/firmware/openhouse-basestation-firmware/backups*/

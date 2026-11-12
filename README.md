@@ -1,7 +1,8 @@
 # openhouse · RagdollUser 修改版
 
 > 基于 [YusufOzmen01/openhouse](https://github.com/YusufOzmen01/openhouse)（MIT），
-> 用于让 6 台 HTC 一代基站同时工作。所有内容集中在本目录。
+> 用于让 **4 台** HTC 一代基站同时工作（一代只有 4 个频道）。手上有 6 台，
+> 可以轮换着用、也可以先刷好备用。所有内容集中在本目录。
 
 ---
 
@@ -12,8 +13,9 @@ openhouse_FixedByRagdollUser\
 ├── README.md                     ← 本文件
 ├── docs\                         分析、计划、修复报告、基站台账
 ├── repo\openhouse\               源码（git 克隆，HEAD 817ea42，含我们的固件补丁）
+├── shell\OpenhouseSetup\         图形界面（C# + WebView2，openhouse UI）
 ├── packages\
-│   ├── firmware\                 固件刷写包（中文脚本 + 原厂备份 + 归档）
+│   ├── firmware\                 固件刷写包（中文脚本 + 镜像）
 │   └── driver\                   驱动安装包（v1.0.1 + 打补丁的安装器）
 ├── backups\                      额外留存的基站 dump
 ├── downloads\                    两个原始发布包
@@ -31,7 +33,7 @@ openhouse_FixedByRagdollUser\
 | 固件发布基线 | `lhbs-20261108-db80251-dirty`（v1.0.1 官方包） |
 | 驱动发布基线 | v1.0.1，`BUILD.json` 记 `22c3b22` + dirty，MinGW GCC 16.2 |
 | 我们自己编的固件 | `lhbs-20261109-currentfix.bin`（arm-none-eabi-gcc 13.2.1） |
-| 基站 | 6 台 1.0，两个生产批次（2016-05-05 / 2016-09-20） |
+| 基站 | 6 台 1.0，两个生产批次（2016-05-05 / 2016-09-20）；同时最多跑 4 台 |
 
 ---
 
@@ -73,9 +75,62 @@ if (P.laser_1_current < 40) P.laser_1_current = 190;
 
 ---
 
+### 5. 图形界面（`shell\OpenhouseSetup`）
+
+原本刷固件、装驱动、查摆位是三份散落的 PowerShell 脚本，靠翻文档记参数。
+现在收进一个窗口：C# WinForms 外壳 + WebView2 渲染页面，单文件 exe，
+目标机器不需要装 .NET 运行时。
+
+**页面**
+
+| 页面 | 做什么 |
+|---|---|
+| 主页 | 三张状态卡（SteamVR / openhouse / 接收器）+ 下一步该干什么 |
+| 基站 / 基站状态 | 每台的频道、角色、锁定状态、定位误差 |
+| 基站 / 刷写固件 | 四步引导接入 ISP 模式；只读检查、刷写、还原；写入后强制拔插校验 |
+| 基站 / 位置查看 | Three.js 实时 3D：基站位置、朝向锥体、tracker |
+| 基站 / 基站摆位助手 | 直接读接收器原始光脉冲，按频道报哪台没被照到 |
+| 驱动 | 装 / 卸 openhouse 驱动，自动结束占用文件的进程 |
+| 日志 | 内存记录 + 落盘文件，可复制、可打开目录 |
+| 关于 | 原理说明 |
+
+**几条刻意做对的地方**
+
+- **窗口无边框，圆角交给 DWM**。CSS 的 `border-radius` 只圆页面内容，切不到
+  窗口本身；`DWMWA_WINDOW_CORNER_PREFERENCE` 才能让整个窗口变圆。
+- **选中行不改背景色**。Windows 的次像素抗锯齿会因为背景变化让字形发虚，
+  所以列表用一条独立的滑块标记选中项，行本身不动。
+- **按钮文字上移 2px**。CJK 字形的墨迹在行盒里偏下，直接居中是歪的。
+- **日志区吸收布局变化**。状态栏出现时不让页面被压出滚动条，由日志区让出高度。
+- **三套日志各自独立**。刷写、摆位、驱动各用一份缓冲，后端每条消息带操作名，
+  不会出现“在摆位页看到刷写日志”。
+- **摆位助手不依赖驱动**。直接读接收器的原始光脉冲，数每秒有多少次激光扫过，
+  驱动坏了也能用；代价是它要独占接收器，所以会先把 SteamVR 关掉。
+- **写入后不留退路**。刷完弹窗要求拔线重接，接上之前关不掉，避免“以为刷好了”。
+
+### 6. 原始固件只备份一份
+
+把 31 份历史 dump 逐字节比对之后确认：所有原厂固件的应用区完全相同。
+存在两个版本（`90426752AD08` 与 `1C66483F3731`），但各自内部一致。
+于是改掉了“每次写入前强制备份 128 KB”的做法：
+
+- 首次使用时从任意一台原厂基站（或历史 dump）提取应用区，存成 `firmware\stock-<hash>.bin`
+- 同一版本只存一份，不同版本各存一份
+- 没有原始固件时，刷写与还原功能全部锁着
+- 还原不再需要用户选备份，直接写回那一份
+- `restore` 从“写整片 131072 字节”改成“只写应用区”，和刷写一致
+
 ## 三条常用操作
 
-### 刷固件
+### 用图形界面（推荐）
+
+```
+dist\publish\shell\openhouse-setup.exe
+```
+
+或者直接用 release 里那个：解压后双击 `openhouse-setup.exe`，`web` 文件夹要和它放在一起。
+
+### 刷固件（命令行）
 
 ```
 双击 packages\firmware\openhouse-basestation-firmware\Install-Firmware.bat
@@ -144,8 +199,8 @@ tools\build-firmware.cmd clean    清理
 
 ## 提醒
 
-- `packages\firmware\...\backups\` 里的 14 个文件混着**原厂镜像**和 **lhbs 镜像**，
-  用 `Restore-Stock.bat` 选的时候看"类型"那一列。
-- 真正不可再生的是每台的 **EEPROM**（工厂标定），它在 `backups\` 里那几份带 `EEPROM` 字样的 dump 中，
-  偏移 `0x1F040`。
-- 刷机前、刷机后各留一份 dump，永远不亏。
+- 刷写只覆盖前 49,408 字节，`0x1F000` 起的 EEPROM 副本和 `0x1A000` 起的快照都不碰。
+  序列号和激光标定存在片内 EEPROM，跟 flash 是两块独立存储。
+- 真正不可再生的是每台的 **EEPROM**（工厂标定）。lhbs 每次启动会把它的副本
+  写到 flash 的 `0x1F000`，所以刷过 lhbs 的机器能从那块读出序列号。
+- 原厂固件的两个版本都留在 `firmware\stock-*.bin`，还原时默认用文件名排前的那份。

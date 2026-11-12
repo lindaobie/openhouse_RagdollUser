@@ -10,6 +10,10 @@ internal static class Flashing
 {
     public const int FlashBytes = 131072;   // the whole flash, as the ROM exposes it
 
+    /// The application image length. Everything past this belongs to the ROM volume's filler,
+    /// the snapshot sectors and the EEPROM dump, none of which a write ever touches.
+    public const int AppBytes = 49408;
+
     public static string? FindCrp(out string label)
     {
         label = "";

@@ -63,13 +63,37 @@ function paintLog(el) {
 
 const driverName = { openhouse: 'openhouse', stock: '原厂未替换', missing: '文件缺失', unknown: '大小不符' };
 
-// The flash page is re-rendered on every poll, so its output has to live outside the DOM.
+// Both the flash page and the layout helper show a live log, and they used to share a single
+// buffer — so a flash started on one page showed up on the other. Each page keeps its own
+// lines now, and the backend tags every message with the operation that produced it.
 const runLines = [];
-function runLog(text, cls = '') {
-  runLines.push({ t: new Date().toTimeString().slice(0, 8), text, cls });
-  if (runLines.length > 300) runLines.shift();
-  paintRun();
+const linkLines = [];
+const drvLines = [];
+
+function pushLine(lines, text, cls, repaint) {
+  const stamp = new Date().toTimeString().slice(0, 8);
+  // The waiting notice repeats every few seconds. Rewriting the last line in place keeps it
+  // from burying everything that came before.
+  const last = lines[lines.length - 1];
+  if (cls === 'countdown' && last && last.countdown) {
+    last.t = stamp;
+    last.text = text;
+    repaint();
+    return;
+  }
+  lines.push({
+    t: stamp,
+    text,
+    cls: cls === 'countdown' ? 'warn' : cls,
+    countdown: cls === 'countdown',
+  });
+  if (lines.length > 300) lines.shift();
+  repaint();
 }
+
+function runLog(text, cls = '') { pushLine(runLines, text, cls, paintRun); }
+function linkLog(text, cls = '') { pushLine(linkLines, text, cls, paintLink); }
+function drvLog(text, cls = '') { pushLine(drvLines, text, cls, paintDrv); }
 function paintBusyBar() {
   const bar = $('busybar');
   if (!bar) return;
@@ -78,17 +102,21 @@ function paintBusyBar() {
   const txt = $('busybar-text');
   if (txt) txt.textContent = '正在进行：' + (busyLabel || '操作');
   const stop = $('busybar-stop');
-  if (stop) stop.hidden = busyLabel !== '检查基站摆位';
+  if (stop) stop.hidden = false;
 }
-function paintRun() {
-  const el = $('runlog');
+function paintLines(lines, id) {
+  const el = $(id);
   if (!el) return;
-  if (!runLines.length) { el.innerHTML = '<div class="idle">操作记录会出现在这里。</div>'; return; }
-  el.innerHTML = runLines
+  if (!lines.length) { el.innerHTML = '<div class="idle">操作记录会出现在这里。</div>'; return; }
+  el.innerHTML = lines
     .map((l) => `<div><span class="tm">${l.t}</span><span class="${l.cls}">${esc(l.text)}</span></div>`)
     .join('');
   el.scrollTop = el.scrollHeight;
 }
+
+function paintRun() { paintLines(runLines, 'runlog'); }
+function paintLink() { paintLines(linkLines, 'linklog'); }
+function paintDrv() { paintLines(drvLines, 'drvlog'); }
 
 function tel(st) { return st?.telemetry || {}; }
 function bases(st) { return tel(st).bases || []; }
@@ -524,16 +552,24 @@ function renderFlash(st) {
   const crp = st.crp || {};
   const hasCrp = !!crp.letter;
   const fw = st.firmware || [];
-  const backups = st.backups || [];
+  const stock = st.stock || { ok: false };
   if (!flashChoice || !fw.some((f) => f.name === flashChoice)) flashChoice = fw[0]?.name || null;
-  if (!backupChoice || !backups.some((b) => b.name === backupChoice)) backupChoice = backups[0]?.name || null;
   const sel = fw.find((f) => f.name === flashChoice);
-  const matchName = crp.matches || '';
-  const cmp = !hasCrp || !sel ? '—' : matchName === sel.name ? '一致' : matchName ? `盘内是 ${matchName}` : '不一致';
+  // What the station in ISP mode is running, read from its application area.
+  const kind = crp.kind || 'unknown';
+  const kindText = kind === 'patch' ? '破解固件' : kind === 'stock' ? '原厂固件' : '—';
+
+  // Nothing on this page works until a factory image is archived. Without one a flash is a
+  // one-way door, so the gate is closed before anyone walks through it, not after.
+  if (!stock.ok) return renderStockGate(st, crp, hasCrp);
+
+  // The tag describes this page only. Another page's operation may be running in the
+  // background, and showing its name here would read as if this page had started it.
+  const fwBusy = flashBusy && busyLabel.indexOf('固件') >= 0;
 
   return `
-  <div class="h"><h2>刷写固件</h2><span class="tag${flashBusy ? ' busy' : ''}">${flashBusy ? (busyLabel || '操作进行中') : hasCrp ? '发现设备' : '等待设备'}</span></div>
-  <p class="sub-line">一次只接一台。写操作前会先把设备里的原厂固件完整备份成 128 KB 的 dump。</p>
+  <div class="h"><h2>刷写固件</h2><span class="tag${fwBusy ? ' busy' : ''}">${fwBusy ? '操作进行中' : hasCrp ? '发现设备' : '等待设备'}</span></div>
+  <p class="sub-line">一次只接一台。写入只覆盖前 49,664 字节，序列号和激光标定存在别的芯片里，不会被碰。</p>
 
   <div class="steps">
     <div class="step ${hasCrp ? 'done' : 'now'}"><span class="n mono">1</span><div><b>断电</b><span>拔掉基站电源</span></div></div>
@@ -545,7 +581,7 @@ function renderFlash(st) {
   <div class="cols">
     <div class="card">
       
-      <div class="sec">设备</div>
+      <div class="sec">当前基站</div>
       
       <div class="detect ${hasCrp ? 'found' : ''}">
       
@@ -559,27 +595,22 @@ function renderFlash(st) {
       
       <div class="kv"><span>SHA256</span><b class="mono small">${hasCrp && crp.sha256 ? esc(crp.sha256.slice(0, 32)) : '—'}</b></div>
       
-      <div class="kv"><span>与镜像对比</span><b class="${cmp === '一致' ? '' : 'warn'}">${esc(cmp)}</b></div>
+      <div class="kv"><span>状态</span><b class="${kind === 'patch' ? 'warn' : ''}">${hasCrp ? kindText : '—'}</b></div>
     </div>
 
     <div class="card">
       
-      <div class="sec">${restoreArmed ? '从备份还原' : '固件镜像'}</div>
+      <div class="sec">${restoreArmed ? '还原到原始固件' : '固件镜像'}</div>
       
       ${restoreArmed
       
-        ? `<select id="bk" class="sel" ${backups.length ? '' : 'disabled'}>
+        ? `<div class="kv"><span>固件</span><b class="mono">${esc(stock.file || '')}</b></div>
       
-            
-       ${backups.length ? backups.map((b) => `<option value="${esc(b.name)}" ${b.name === backupChoice ? 'selected' : ''}>${esc(b.name)} · ${esc(b.kind || '')}</option>`).join('') : '<option>没有备份</option>'}
+           <div class="kv"><span>SHA256</span><b class="mono small">${esc(stock.sha || '—')}</b></div>
       
-           </select>
+           <div class="kv"><span>备份于</span><b class="mono">${esc(stock.date || '—')}</b></div>
       
-           <div class="kv"><span>这份里是</span><b class="mono">${esc(((backups.find((b) => b.name === backupChoice) || {}).kind || '—'))}${((backups.find((b) => b.name === backupChoice) || {}).detail) ? ' · ' + esc((backups.find((b) => b.name === backupChoice) || {}).detail) : ''}</b></div>
-      
-           <div class="kv"><span>备份数量</span><b class="mono">${backups.length}</b></div>
-      
-           <div class="kv"><span>说明</span><b>整片 flash 写回</b></div>`
+           <div class="kv"><span>大小</span><b class="mono">${((stock.size || 0) / 1024).toFixed(0)} KB</b></div>`
       
         : `<select id="fw" class="sel" ${fw.length ? '' : 'disabled'}>
       
@@ -598,7 +629,7 @@ function renderFlash(st) {
 
   <div class="acts">
     <button class="b" id="btn-verify" ${hasCrp && !flashBusy && !restoreArmed ? '' : 'disabled'}>只读检查</button>
-    <button class="b" id="btn-restore" ${hasCrp && backups.length && !flashBusy ? '' : 'disabled'} title="${backups.length ? '从 backups 里选一份写回' : '还没有任何备份'}">${restoreArmed ? '取消还原' : '还原原厂'}</button>
+    <button class="b" id="btn-restore" ${hasCrp && !flashBusy ? '' : 'disabled'} title="写回备份的原始固件">${restoreArmed ? '取消还原' : '还原原厂固件'}</button>
     <span class="grow"></span>
     ${flashBusy
       
@@ -606,14 +637,51 @@ function renderFlash(st) {
       
       : restoreArmed
       
-        ? `<button class="b p armed" id="btn-do-restore" ${hasCrp && backupChoice ? '' : 'disabled'}>确认还原</button>`
+        ? `<button class="b p armed" id="btn-do-restore" ${hasCrp ? '' : 'disabled'}>确认还原</button>`
       
-        : `<button class="b p ${flashArmed ? 'armed' : ''}" id="btn-flash" ${hasCrp && sel ? '' : 'disabled'}>${flashArmed ? '确认写入' : '备份并刷写'}</button>`}
+        : `<button class="b p ${flashArmed ? 'armed' : ''}" id="btn-flash" ${hasCrp && sel ? '' : 'disabled'}>${flashArmed ? '确认写入' : '刷写破解固件'}</button>`}
   </div>
-  ${flashBusy ? '<p class="note">后台在等设备：拔掉 USB 和电源、按原步骤重新插一次，它才会自己完成校验。</p>' : ''}
+  ${fwBusy ? '<p class="note">后台在等设备：拔掉 USB 和电源、按原步骤重新插一次，它才会自己完成校验。</p>' : ''}
 
   <div class="runlog" id="runlog"></div>
-  <p class="note">写入前会先备份盘内的 128 KB 固件；写入后需要拔线重插一次才能完成校验——只有重插，读回来的才是 flash 里的真实内容。</p>`;
+  <p class="note">写入后需要拔线重插一次才能完成校验——只有重插，读回来的才是 flash 里的真实内容。</p>`;
+}
+
+// Shown in place of the write controls while no factory image is archived. Deliberately not a
+// greyed-out button with a tooltip: the reason has to be readable without hovering anything.
+function renderStockGate(st, crp, hasCrp) {
+  return `
+  <div class="h"><h2>刷写固件</h2><span class="tag warn">先备份原始固件</span></div>
+  <p class="sub-line">备份一份原始固件之后才能刷写。同一份可以给所有基站用。</p>
+
+  <div class="steps">
+    <div class="step ${hasCrp ? 'done' : 'now'}"><span class="n mono">1</span><div><b>断电</b><span>拔掉基站电源</span></div></div>
+    <div class="step ${hasCrp ? 'done' : ''}"><span class="n mono">2</span><div><b>按住背面按钮</b><span>按住不要松</span></div></div>
+    <div class="step ${hasCrp ? 'done' : ''}"><span class="n mono">3</span><div><b>插 micro-USB</b><span>必须是数据线</span></div></div>
+    <div class="step ${hasCrp ? 'done' : ''}"><span class="n mono">4</span><div><b>插电源，再松手</b><span>出现 CRP DISABLED 盘</span></div></div>
+  </div>
+
+  <div class="gate">
+    <div class="gate-mark"></div>
+    <div>
+      <b>还没有原始固件备份</b>
+      <p>找一台<b>还没刷过破解固件</b>的基站，按上面四步接上，再点下面的按钮。</p>
+      <p class="dim">手头没有这样的基站，也会从之前的备份里找一份。</p>
+    </div>
+  </div>
+
+  <div class="detect ${hasCrp ? 'found' : ''}">
+    <span class="dot"></span>
+    <b>${hasCrp ? '已连接 ' + esc(crp.letter) : '没有检测到设备'}</b>
+    <span class="mono">${hasCrp ? esc(crp.label) : '接上设备再点备份'}</span>
+  </div>
+
+  <div class="acts">
+    <span class="grow"></span>
+    <button class="b p" id="btn-stock">备份原始固件</button>
+  </div>
+
+  <div class="runlog" id="runlog"></div>`;
 }
 function renderMap(st) {
   const t = tel(st);
@@ -635,8 +703,10 @@ function renderDriver(st) {
     : sv.driver === 'stock' ? '原厂驱动'
     : sv.driver === 'missing' ? '文件缺失' : '未知';
 
+  // Same rule as the flash page: a background flash must not relabel the driver page.
+  const drvBusy = flashBusy && busyLabel.indexOf('驱动') >= 0;
   return `
-  <div class="h"><h2>驱动</h2><span class="tag${flashBusy ? ' busy' : ''}">${flashBusy ? (busyLabel || '操作进行中') : state}</span></div>
+  <div class="h"><h2>驱动</h2><span class="tag${drvBusy ? ' busy' : ''}">${drvBusy ? '操作进行中' : state}</span></div>
   <p class="sub-line">把 openhouse 驱动装进 SteamVR。安装会先结束 Steam 进程，并把 Valve 的原驱动保留成 .stock。</p>
 
   <div class="cols">
@@ -674,9 +744,9 @@ function renderDriver(st) {
     <button class="b" id="btn-drv-uninstall" ${sv.found && sv.stockBackup && !flashBusy ? '' : 'disabled'}>还原原厂驱动</button>
     <span class="grow"></span>
   </div>
-  ${flashBusy ? '<p class="note">正在执行，完成后状态会自动刷新。</p>' : ''}
+  ${drvBusy ? '<p class="note">正在执行，完成后状态会自动刷新。</p>' : ''}
 
-  <div class="runlog" id="runlog"></div>`;
+  <div class="runlog" id="drvlog"></div>`;
 }
 
 function renderLink(st) {
@@ -731,8 +801,12 @@ function renderLink(st) {
       (s ? s.hits + ' hits/s' : '—') + '</b></div>';
   }).join('');
 
+  // The helper has its own run state. A flash or a driver install happening in the background
+  // is not "checking", and must not relabel this page's button.
+  const checking = flashBusy && busyLabel === '检查基站摆位';
+
   return `
-  <div class="h"><h2>基站摆位助手</h2><span class="tag${flashBusy ? ' busy' : ''}">${flashBusy ? (busyLabel || '检查中') : (slots.length ? '检测到 ' + slots.length + ' 台' : '未检查')}</span></div>
+  <div class="h"><h2>基站摆位助手</h2><span class="tag${checking ? ' busy' : ''}">${checking ? '检查中' : (slots.length ? '检测到 ' + slots.length + ' 台' : '未检查')}</span></div>
   <p class="sub-line">这页用来确认基站摆得对不对。摆位不对时，某台会收不到另一台的光，房间就用不了。它能检测哪台基站摆放有问题。</p>
 
   <div class="diag warn" style="margin-bottom:14px">
@@ -744,7 +818,7 @@ function renderLink(st) {
   </div>
 
   <div class="acts" style="margin-top:0">
-    <button class="b ${flashBusy ? 'stop' : 'p'}" id="btn-link">${flashBusy ? '停止检查' : '开始检查'}</button>
+    <button class="b ${checking ? 'stop' : 'p'}" id="btn-link">${checking ? '停止检查' : '开始检查'}</button>
     <span class="grow"></span>
   </div>
   <p class="note spaced">检查会一直进行，数据实时刷新，直到你点停止或者满 10 分钟。期间不要碰基站，也不要碰 tracker。</p>
@@ -760,7 +834,7 @@ function renderLink(st) {
     </div>
     <div class="link-right">
       ${notice}
-      <div class="runlog" id="runlog"></div>
+      <div class="runlog" id="linklog"></div>
     </div>
   </div>`;
 }
@@ -811,7 +885,9 @@ function renderSimple(title, body) {
 function renderView() {
   const st = state;
   const view = $('view');
-  view.classList.toggle('fit', route === 'base.map');
+  // Pages that own their own scroll containers: their columns fill the window and scroll
+  // internally, so nothing the busy bar does can push them over the edge.
+  view.classList.toggle('fit', route === 'base.map' || route === 'base.link' || route === 'base.flash');
   if (!st) {
     view.innerHTML = `<div class="empty"><div class="empty-h">正在读取…</div></div>`;
     return;
@@ -850,7 +926,9 @@ function renderView() {
     case 'driver': html = safe(() => renderDriver(st)); break;
     case 'about': html = safe(() => renderAbout()); break;
     case 'log': html = `<div class="h"><h2>日志</h2><span class="tag" id="log-count">${logLines.length} 条</span></div>
-      <div class="acts" style="margin-top:10px"><button class="b" id="btn-log-copy">复制全部</button><button class="b" id="btn-log-clear">清空</button><span class="grow"></span></div>
+      <p class="sub-line">每次启动会往软件目录下的 logs 文件夹写一个文本文件，保留最近 20 次。</p>
+      <div class="logpath"><span class="mono">${esc(st.logdir || '日志目录不可写')}</span></div>
+      <div class="acts" style="margin-top:10px"><button class="b" id="btn-log-copy">复制全部</button><button class="b" id="btn-log-clear">清空</button><button class="b" id="btn-log-open" ${st.logdir ? '' : 'disabled'}>打开日志目录</button><span class="grow"></span></div>
       <div class="log log-full" id="logbox"></div>`; break;
     default: html = renderSimple('未知页面', route);
   }
@@ -863,6 +941,8 @@ function renderView() {
     if (route === 'log') { const box = $('logbox'); if (box) { paintLog(box); box.scrollTop = box.scrollHeight; } }
     if (route === 'base.status') placeSelbox(false);
     if (route === 'base.flash') paintRun();
+    if (route === 'driver') paintDrv();
+    if (route === 'base.link') paintLink();
     return;
   }
   const keepScroll = view.scrollTop;
@@ -882,7 +962,10 @@ function renderView() {
     if (box) { paintLog(box); box.scrollTop = box.scrollHeight; }
   }
   if (route === 'base.status') placeSelbox(false);
-  if (route === 'base.flash' || route === 'driver' || route === 'base.link') paintRun();
+  if (route === 'base.flash' || route === 'driver') {
+    if (route === 'driver') paintDrv(); else paintRun();
+  }
+  if (route === 'base.link') paintLink();
   if (route === 'base.map') { const c = $('map3d'); if (c) Map3D.show(c, st); } else { Map3D.hide(); }
 }
 
@@ -931,17 +1014,26 @@ document.addEventListener('click', async (e) => {
   }
   const bs = e.target.closest('#busybar-stop');
   if (bs) {
-    if (host) await host.StartOptical(0);
+    if (!flashBusy) return;
+    // Only the optical check can actually be interrupted; everything else has to run to the
+    // end, so the button explains that instead of doing nothing.
+    if (busyLabel === '检查基站摆位') { if (host) await host.StartOptical(0); return; }
+    showBusyNotice(busyLabel);
     return;
   }
 
-  const lc = e.target.closest('#btn-log-clear');
-  if (lc) {
+  const lc = e.target.closest('#btn-log-clear');  if (lc) {
     logLines.length = 0;
     const box = $('logbox');
     if (box) paintLog(box);
     const tag = $('log-count');
     if (tag) tag.textContent = '0 条';
+    return;
+  }
+
+  const lo = e.target.closest('#btn-log-open');
+  if (lo) {
+    if (host) host.OpenLogDir();
     return;
   }
 
@@ -955,12 +1047,13 @@ document.addEventListener('click', async (e) => {
 
   const lk = e.target.closest('#btn-link');
   if (lk) {
+    if (flashBusy && busyLabel !== '检查基站摆位') { showBusyNotice(busyLabel); return; }
     if (!host) { runLog('宿主桥接没起来', 'warn'); return; }
-    runLines.length = 0;
+    linkLines.length = 0;
     optical = null;
-    runLog('开始检查基站摆位…');
+    linkLog('开始检查基站摆位…');
     const err = await host.StartOptical(600);
-    if (err) runLog(err, 'warn');
+    if (err) linkLog(err, 'warn');
     renderView();
     return;
   }
@@ -968,20 +1061,20 @@ document.addEventListener('click', async (e) => {
   const di = e.target.closest('#btn-drv-install');
   if (di) {
     if (!host) { runLog('宿主桥接没起来', 'warn'); return; }
-    runLines.length = 0;
-    runLog('安装驱动：会先结束 Steam 进程');
+    drvLines.length = 0;
+    drvLog('安装驱动：会先结束 Steam 进程');
     const err = await host.StartDriver('install');
-    if (err) runLog(err, 'warn');
+    if (err) drvLog(err, 'warn');
     return;
   }
 
   const du = e.target.closest('#btn-drv-uninstall');
   if (du) {
     if (!host) { runLog('宿主桥接没起来', 'warn'); return; }
-    runLines.length = 0;
-    runLog('还原 SteamVR 原驱动');
+    drvLines.length = 0;
+    drvLog('还原 SteamVR 原驱动');
     const err = await host.StartDriver('uninstall');
-    if (err) runLog(err, 'warn');
+    if (err) drvLog(err, 'warn');
     return;
   }
 
@@ -994,20 +1087,31 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
+  const sc = e.target.closest('#btn-stock');
+  if (sc) {
+    if (!host) { runLog('宿主桥接没起来', 'warn'); return; }
+    runLines.length = 0;
+    runLog('正在找原始固件…');
+    const err = await host.ExtractStock();
+    if (err) runLog(err, 'warn');
+    refresh();
+    return;
+  }
+
   const rs = e.target.closest('#btn-restore');
   if (rs) {
     restoreArmed = !restoreArmed;
     flashArmed = false;
     renderView();
-    if (restoreArmed) runLog('选一份备份，然后点「确认还原」。整个 128 KB flash 会被写回。', 'warn');
+    if (restoreArmed) runLog('确认后会把备份的原始固件写回去。', 'warn');
     return;
   }
 
   const dr = e.target.closest('#btn-do-restore');
   if (dr) {
     if (!host) { runLog('宿主桥接没起来', 'warn'); return; }
-    runLog(`还原：${backupChoice}`);
-    const err = await host.StartFlash('restore', backupChoice || '');
+    runLog('还原：备份的原始固件');
+    const err = await host.StartFlash('restore', '');
     if (err) runLog(err, 'warn');
     restoreArmed = false;
     renderView();
@@ -1023,7 +1127,7 @@ document.addEventListener('click', async (e) => {
       
       renderView();
       
-      runLog('会先备份盘内固件再写入。再点一次确认。', 'warn');
+      runLog('再点一次确认写入。', 'warn');
       
       return;
     }
@@ -1051,36 +1155,100 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-// The label warning: the number has to be readable and copyable, and the button stays
-// locked for a few seconds so it cannot be dismissed by reflex.
+// The modal is shared by the wait gate and the blocked-action notice. Each of them restores
+// every field it uses, so state from one can never bleed into another.
 let modalTimer = null;
-function showLabelWarning(stamp) {
-  $('modal-stamp').textContent = stamp;
-  const btn = $('modal-ok');
-  let left = 5;
-  btn.disabled = true;
-  btn.textContent = `我记下了（${left}）`;
-  $('overlay').hidden = false;
+
+
+// A blocked click should say why it did nothing. Staying silent reads as a broken button.
+function setTxt2(text) {
+  const el = $('modal-txt2');
+  el.innerHTML = text || '';
+  el.style.display = text ? '' : 'none';
+}
+
+function showBusyNotice(label) {
+  const op = label || '操作';
   clearInterval(modalTimer);
-  modalTimer = setInterval(() => {
-    left -= 1;
-    if (left > 0) {
-      
-      btn.textContent = `我记下了（${left}）`;
-    } else {
-      
-      clearInterval(modalTimer);
-      
-      btn.disabled = false;
-      
-      btn.textContent = '我记下了';
-    }
-  }, 1000);
+  $('modal-badge').className = 'modal-badge';
+  $('modal-badge').textContent = '!';
+  $('modal-h').textContent = `${op}还没结束`;
+  $('modal-stamp').style.display = 'none';
+  $('modal-txt').textContent = `${op}正在进行，请完成当前的${op}操作，再进行其他操作。`;
+  setTxt2(op.indexOf('固件') >= 0 ? '等基站重新接上、校验通过之后，刷写页才会解除锁定。' : '');
+  const btn = $('modal-ok');
+  btn.disabled = false;
+  btn.textContent = '知道了';
+  $('overlay').hidden = false;
+}
+
+// Shown the moment a write finishes, and kept on screen until the station is back on the bus.
+// Steps only — the reason the cable has to come out is in the docs, not in the way.
+let waitOpen = false;
+let waitDone = false;
+function showWaitNotice(step) {
+  clearInterval(modalTimer);
+  waitDone = false;
+  $('modal-badge').className = 'modal-badge';
+  $('modal-badge').textContent = '!';
+  $('modal-h').textContent = step ? '正在等基站重新接上' : '固件已写入，还差一步';
+  $('modal-stamp').style.display = 'none';
+  $('modal-txt').innerHTML = step
+    ? '请按照操作重新连接基站，以验证固件完整性。<div class="modal-steps">① 按住背面按钮，不要松<br>② 插 micro-USB<br>③ 插电源，然后松手</div>'
+    : '现在把基站上的线全部拔掉，然后重新接一次：<div class="modal-steps">① 拔掉 USB 和电源<br>② 按住背面按钮，不要松<br>③ 插 micro-USB<br>④ 插电源，然后松手</div>';
+  setTxt2('');
+  const btn = $('modal-ok');
+  // No manual close: the whole point is that this step must be finished before anything
+  // else can happen. The button is replaced by a status line until the station is back.
+  btn.disabled = true;
+  btn.textContent = '等待基站重新接上…';
+  $('overlay').hidden = false;
+  waitOpen = true;
+}
+
+function hideWait() {
+  if (!waitOpen) return;
+  waitOpen = false;
+  waitDone = false;
+  $('overlay').hidden = true;
+}
+
+// Verification finished: the dialog stops being a gate and becomes a result to acknowledge.
+function showWaitResult(kind) {
+  clearInterval(modalTimer);
+  waitDone = true;
+  $('modal-badge').className = 'modal-badge' + (kind === 'ok' ? ' ok' : '');
+  $('modal-badge').textContent = kind === 'ok' ? '✓' : '!';
+  $('modal-stamp').style.display = 'none';
+  if (kind === 'ok') {
+    $('modal-h').textContent = '校验通过';
+    $('modal-txt').innerHTML = '固件已经写进基站，读回来的内容和镜像一致。';
+    setTxt2('现在，请拔掉基站，正常接电源。<br>可以按基站背面的按钮来选择频道（1、2、3、4）');
+  } else if (kind === 'timeout') {
+    $('modal-h').textContent = '没有完成校验';
+    $('modal-txt').innerHTML = '超时没等到基站重新接上，这次没有校验。';
+    setTxt2('下次刷写时会重新校验。');
+  } else {
+    $('modal-h').textContent = '校验没通过';
+    $('modal-txt').innerHTML = '读回来的内容和镜像对不上。';
+    setTxt2('建议重新刷一次。');
+  }
+  const btn = $('modal-ok');
+  btn.disabled = false;
+  btn.textContent = '确定';
+  $('overlay').hidden = false;
+  waitOpen = true;
 }
 
 $('btn-min').addEventListener('click', () => host?.Minimize());
 // The label warning only closes on the button: it is the one thing the user must not skip.
-$('modal-ok').addEventListener('click', () => { $('overlay').hidden = true; });
+$('modal-ok').addEventListener('click', () => {
+  if (waitOpen && !waitDone) return;   // the re-plug gate has no manual close
+  clearInterval(modalTimer);
+  waitOpen = false;
+  waitDone = false;
+  $('overlay').hidden = true;
+});
 $('btn-close').addEventListener('click', () => host?.Close());
 $('titlebar').addEventListener('mousedown', (e) => {
   if (e.button !== 0 || e.target.closest('.tb-btn')) return;
@@ -1093,14 +1261,6 @@ window.addEventListener('resize', () => Map3D.resize());
     window.chrome.webview.addEventListener('message', (ev) => {
       
       const m = ev.data || {};
-      
-      if (m.modal) {
-      
-        showLabelWarning(m.modal.stamp || '—');
-      
-        return;
-      
-      }
       
       if (m.busy !== undefined) {
       
@@ -1135,7 +1295,17 @@ window.addEventListener('resize', () => Map3D.resize());
       
       }
       
-      if (m.text) runLog(m.text, m.level || '');
+      if (m.level === 'wait') { showWaitNotice(0); }
+      else if (m.level === 'wait-step') { showWaitNotice(1); }
+      else if (m.level === 'wait-ok') { showWaitResult('ok'); }
+      else if (m.level === 'wait-fail') { showWaitResult('fail'); }
+      else if (m.level === 'wait-timeout') { showWaitResult('timeout'); }
+
+      if (m.text) {
+        if (m.op === '检查基站摆位') linkLog(m.text, m.level || '');
+        else if (m.op && m.op.indexOf('驱动') >= 0) drvLog(m.text, m.level || '');
+        else runLog(m.text, m.level || '');
+      }
     });
   }
   if (host) {

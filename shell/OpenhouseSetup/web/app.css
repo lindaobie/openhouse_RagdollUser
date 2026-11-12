@@ -278,6 +278,10 @@ main { flex: 1; padding: 18px 22px 26px; overflow-y: auto; min-width: 0; }
 #view.fit .map3d { flex: 1 1 auto; min-height: 180px; }
 #view.fit .h, #view.fit .sub-line { flex: 0 0 auto; }
 #view.fit .mapdata { flex: 0 0 auto; }
+/* Fixed-height rows stay put; the log absorbs whatever the busy bar takes away. */
+#view.fit .steps, #view.fit .cols, #view.fit .acts, #view.fit .note, #view.fit .diag { flex: 0 0 auto; }
+#view.fit .runlog { height: auto; flex: 1 1 auto; min-height: 120px; }
+#view.fit .link2 { flex: 1 1 auto; min-height: 0; height: auto; }
 .map3d-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 .map3d-canvas:active { cursor: grabbing; }
 .map3d-label {
@@ -438,6 +442,12 @@ main { flex: 1; padding: 18px 22px 26px; overflow-y: auto; min-width: 0; }
   display: flex; align-items: center; justify-content: center;
 }
 .modal-h { font-size: 16px; font-weight: 600; color: #f0f2f6; margin-bottom: 14px; }
+/* Verified state: the same badge, in the colour that means "done" instead of "look here". */
+.modal-badge.ok {
+  background: rgba(92,255,157,.1);
+  border-color: rgba(92,255,157,.35);
+  color: var(--ok);
+}
 .modal-stamp {
   font-size: 18px; letter-spacing: .06em; font-weight: 600;
   background: #04070a; color: #5cff9d;
@@ -449,11 +459,49 @@ main { flex: 1; padding: 18px 22px 26px; overflow-y: auto; min-width: 0; }
 .modal-txt { font-size: 12.5px; color: var(--ink-dim); line-height: 1.75; margin-bottom: 8px; }
 .modal-txt.warn { color: var(--warn); margin-bottom: 18px; }
 .tag.busy { color: var(--warn); background: rgba(214,168,106,.1); border-color: rgba(214,168,106,.3); }
+.tag.warn { color: var(--warn); background: rgba(214,168,106,.1); border-color: rgba(214,168,106,.3); }
+
+/* ---- stock gate ------------------------------------------------------------- */
+.gate {
+  display: flex; gap: 16px; align-items: flex-start;
+  padding: 20px 18px; margin: 2px 0 18px;
+  border: 1px solid rgba(214,168,106,.22); border-radius: 10px;
+  background: rgba(214,168,106,.045);
+}
+.gate-mark { flex: 0 0 34px; height: 34px; border-radius: 9px; border: 1px solid rgba(214,168,106,.35); position: relative; }
+.gate-mark::before {
+  content: ""; position: absolute; left: 50%; top: 7px; width: 11px; height: 9px;
+  border: 1.5px solid var(--warn); border-bottom: 0; border-radius: 6px 6px 0 0;
+  transform: translateX(-50%);
+}
+.gate-mark::after {
+  content: ""; position: absolute; left: 50%; top: 16px; width: 17px; height: 11px;
+  background: var(--warn); border-radius: 3px; transform: translateX(-50%);
+}
+.gate > div > b { display: block; font-size: 13.5px; font-weight: 600; color: #e8e0d3; margin-bottom: 8px; }
+.gate p { font-size: 12.5px; line-height: 1.75; color: var(--ink-dim); margin: 0 0 7px; }
+.gate p b { color: #e2dbcf; font-weight: 500; }
+.gate p.dim { color: var(--ink-faint); font-size: 12px; margin-bottom: 0; }
+.gate code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--warn); font-size: 12px; }
+
+/* Where this run's log file lives. Shown as a path, so it has to survive wrapping. */
+.logpath {
+  margin: 8px 0 0; padding: 9px 12px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: rgba(255,255,255,.02);
+  font-size: 11px; color: var(--ink-faint);
+  word-break: break-all; line-height: 1.6;
+}
+
+/* The re-plug steps, kept as one left-aligned block centred inside the dialog. */
+.modal-steps { display: block; width: fit-content; margin: 14px auto 2px; text-align: left; line-height: 2.1; }
 /* ---- placement helper: four simulated stations ---- */
 .link2 { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: stretch; }
-.link-left { display: flex; flex-direction: column; gap: 14px; }
+.link-left { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow-y: auto; }
 .link-right { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-.link2 .runlog { height: auto; flex: 1 1 auto; margin-top: 0; min-height: 240px; }
+/* The column has a fixed height now, so the log fills whatever the notice above leaves and
+   scrolls inside that box instead of stretching the page. */
+.link2 .runlog { height: auto; flex: 1 1 auto; margin-top: 0; min-height: 120px; max-height: none; overflow-y: auto; }
 .note.spaced { margin: 10px 0 18px; }
 
 .warnbox { border: 1px solid rgba(214, 168, 106, .35); background: rgba(214, 168, 106, .055); border-radius: 10px; padding: 12px 14px; }
