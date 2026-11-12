@@ -240,6 +240,7 @@ const EN = {
 
   // ---- log
   '演示版，只读': 'demo build, read-only',
+  'openhouse setup · 演示版，只读': 'openhouse setup · demo build, read-only',
   '已刷新': 'Refreshed',
   '给 HTC Vive 一代基站的图形化工具：刷固件、装驱动、看摆位。':
     'A graphical tool for HTC Vive 1.0 base stations: flash firmware, install the driver, check placement.',
