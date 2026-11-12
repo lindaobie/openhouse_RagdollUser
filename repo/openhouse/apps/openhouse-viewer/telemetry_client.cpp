@@ -40,6 +40,8 @@ void TelemetryClient::Poll(double now) {
   for (size_t nl; (nl = buffer_.find('\n', start)) != std::string::npos; start = nl + 1)
     Handle(buffer_.substr(start, nl - start));
   buffer_.erase(0, start);
+  // An unfinished line far longer than any the driver sends: not our driver on the port (#54.3).
+  if (buffer_.size() > (16u << 20)) Disconnect();
 }
 
 void TelemetryClient::Handle(const std::string& line) {

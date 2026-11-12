@@ -105,6 +105,7 @@ struct DeviceInfo {
   std::string deviceClass;      // raw config device_class
   ControllerType controllerType = ControllerType::Index;  // Controller role only
   std::string model, manufacturer, renderModel, controllerRole;  // "left_hand"/"right_hand"
+  std::string resourceRoot, inputProfile, registeredType;  // config resource_root, input_profile, registered_device_type
   bool connected = false;
   bool enabled = true;          // disabled devices are listed but ignored entirely
   std::optional<int> batteryPercent;
@@ -176,6 +177,21 @@ struct SessionEvent {
   LogLevel level = LogLevel::Info;
 };
 
+// Not stock: 1.0 and 2.0 base stations in one room, used together (ai/driver/mixed_stations.md).
+// Devices that do switch to LH1 mode, where they see both kinds, and their 2.0 stations' hits are
+// picked out of the LH1 pulses; now and then they visit LH2 mode to time the 2.0 stations again.
+// Off by default: only for rooms with both kinds.
+struct MixedLightOptions {
+  bool enabled = false;
+  // Which kinds of device read both; the others stay on 2.0 light (LH2 mode), as the headset
+  // always does. Trackers are everything that isn't a headset or a controller.
+  bool controllers = true, trackers = true;
+  // The headset, in LH2 mode, times each 2.0 station for the others, so they visit LH2 mode half as
+  // often while it covers every station they use.
+  bool scout = true;
+  bool operator==(const MixedLightOptions&) const = default;
+};
+
 struct SessionOptions {
   // Input: a .lhraw capture (replay) or, when empty, live USB devices.
   std::string replayPath;
@@ -210,6 +226,9 @@ struct SessionOptions {
   std::string preinitDirectory;
   // Live USB: also record every raw report to this .lhraw (replayable).
   std::string capturePath;
+  // 1.0 and 2.0 base stations together, from the start (SetMixedLight changes it). In a replay
+  // it sorts the recorded LH1 pulses; the light modes are the recording's.
+  MixedLightOptions mixedLight;
 };
 
 class Session {
@@ -236,6 +255,14 @@ class Session {
   // (glide time constants, s; 0 = at once) and whether poses carry the acceleration for
   // the host to predict with. Defaults 0.06 s, 0.06 s, true.
   virtual void SetOutputTuning(double positionSmoothing, double rotationSmoothing, bool reportAcceleration) = 0;
+  // Applied at once: devices that stop reading both kinds of base station go back to the
+  // usual choice of light mode, and those that start go to LH2 mode to time the 2.0 stations.
+  virtual void SetMixedLight(const MixedLightOptions& options) = 0;
+  // What's in force: settings.json "mixedLight" (or SessionOptions) until SetMixedLight.
+  virtual MixedLightOptions MixedLight() const { return {}; }
+  // settings.json "hideLostDevices": a lost controller or tracker is reported as lost (the
+  // host hides it) instead of held where it was last seen. Off by default.
+  virtual bool HideLostDevices() const { return false; }
 
   // Wireless receivers (dongles), live USB only: serial, and the device paired and
   // connected to it now ("" if none).
@@ -243,6 +270,12 @@ class Session {
   virtual std::vector<Receiver> Receivers() const = 0;
   // Pairing mode on a receiver for `seconds` (0 leaves it); false if not plugged in.
   virtual bool SetPairing(const std::string& receiver, double seconds) = 0;
+  // Live USB: the radio of the receiver with Bluetooth, for SteamVR's base station power
+  // management. Whether there is one, switching it (false if it failed) and reading it
+  // (nullopt if it didn't answer). The last two can block for a moment.
+  virtual bool HasBluetoothRadio() const = 0;
+  virtual bool SetBluetoothRadio(bool on) = 0;
+  virtual std::optional<bool> BluetoothRadioOn() = 0;
   // Live USB: starts recording every raw report to this .lhraw (replayable with
   // `lhtool session`), or stops with an empty path. False when there is nothing to record.
   virtual bool SetCapture(const std::string& path) = 0;

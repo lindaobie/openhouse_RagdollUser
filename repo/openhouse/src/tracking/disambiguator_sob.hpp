@@ -41,7 +41,8 @@ constexpr double kTickSeconds = 1.0 / 48e6;  // 0x1a96f0
 class SobDisambiguator {
  public:
   void OnBeamWord(double t, int channel, int ootxBit, int generation);
-  void OnSensorWord(double t, int channel, int sensor);
+  // sorted: a hit PulseSorter picked out of LH1 pulses; its samples get kSampleSorted.
+  void OnSensorWord(double t, int channel, int sensor, bool sorted = false);
   // Emits revolutions whose next beam word is overdue (call with the latest device time).
   void Advance(double t);
   void Reset();
@@ -53,7 +54,15 @@ class SobDisambiguator {
 
   // True once any LH2 word was seen.
   bool Active() const { return active_; }
+  // The base on this channel, 0 while it isn't known.
+  uint32_t ChannelSerial(int channel) const {
+    return channel >= 0 && channel < kChannels ? channels_[size_t(channel)].serial : 0;
+  }
   bool PopFrame(OpticalFrame* out);
+  // For merging with LH1 frames, since the filter drops a frame older than the last it used:
+  // the oldest queued frame's first hit, and the time no older frame can still be built before.
+  bool OldestFrameTime(double* t) const;
+  double SettledUpTo() const;
   bool PopBaseConfig(BaseConfig* cfg, BaseDynamicState* dyn);
   bool PopLog(std::string* out);
 
@@ -61,6 +70,7 @@ class SobDisambiguator {
   struct Hit {
     double time;
     int sensor;
+    bool sorted = false;
   };
   struct Channel {
     bool seen = false;

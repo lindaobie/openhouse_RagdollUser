@@ -49,8 +49,16 @@ Do not bundle glibc or the dynamic loader.
 | device | class | properties |
 |---|---|---|
 | Index controller (`device_class: controller`, Knuckles model) | Controller | `knuckles`, `{indexcontroller}/input/index_controller_profile.json`, render model from the config, role hint left/right from `tracked_controller_role`, battery |
-| everything else except HMDs | GenericTracker | `vive_tracker`, `{htc}/input/vive_tracker_profile.json`, render model from the config, role OptOut, battery; inputs ignored |
+| everything else except HMDs | GenericTracker | `vive_tracker`; HTC's (`htc` resource root, `{htc}/input/vive_tracker_profile.json`, `htc/vive_tracker<serial>`, HTC icons) for an HTC tracker, the config's own `resource_root`, `input_profile`, `registered_device_type` and that root's icons for any other maker's (Tundra Labs), as stock `0x1cf860`; render model from the config (`vr_tracker_vive_1_0` on a "VIVE Tracker 3.0…" is `{htc}vr_tracker_vive_3_0`, stock `0x1d69f0`); role OptOut, battery, `ConnectedWirelessDongle` = its receiver's serial (OyasumiVR powers off through it); inputs: HTC's get `/input/power`, `grip`, `application_menu`, `trigger` (click, value), `thumb` and `/output/haptic` from the wand decoder (stock `0x3f78a0` case 3), other makers' none |
 | base stations | TrackingReference | `lh_basestation_vive`, mode label A/B/C, pose from the room map |
+
+A Tundra Tracker with an identity `head` (all of them ship one) gets the stock driver's
+head instead (`0x1dec60`): `plus_x` (−1,0,0), `plus_z` (0,0,−1), `position` (0,0,0.001577),
+180° about Y; taken literally it was drawn bottom-up.
+
+Windows exports (`src/openvr/driver_lighthouse.def`): `HmdDriverFactory` and our static
+hidapi's `hid_*` functions themselves, for drivers that hook the lighthouse driver's HID
+access (sboys3's Pimax config driver, #32). On Linux only `HmdDriverFactory` (`exports.map`).
 
 All devices: `TrackingSystemName = lighthouse`, `CurrentUniverseId` = the SteamVR universe
 id of the reference universe when a shared base allows alignment, else the liblh
@@ -200,6 +208,14 @@ per-device `EnterStandby` callback queues `Session::PowerOff` and the stock rece
 command `ff 9f 04 6f 66 66 21` (`off!`, padded to 64 bytes). This is hardware power-off,
 not persistent disabling. HMDs and base stations do not advertise this capability.
 Global provider standby is deliberately not wired to power off every device.
+Each `EnterStandby` and power-off result is logged at INFO (idle power-off was reported
+not to work; the path matches stock, cause unknown). Of the provider's standby calls
+only `LeaveStandby` reaches the stock driver (`StockHmd::LeaveStandby`): it powers the
+headset panels back on (#20, black display after standby); its `EnterStandby` would
+power off controllers it doesn't own. The stock driver's context gets an
+`IVRProperties` proxy that drops its writes of `Prop_CurrentUniverseId_Uint64` (#19:
+its unused tracker switched SteamVR to its own universe mid-session). The `capture`
+setting is read only under SteamVR (older Monado aborts on a missing key).
 Power requests take priority over pending vibration for that receiver.
 The packet is decompilation-backed (`0x3ce5a0`, `0x3ce6e0`); callback routing and
 packet bytes are tested, but actual power-down/reconnect needs a live-device check.
@@ -209,6 +225,23 @@ disappear, as requested. Newly observed bases continue through the existing room
 learning pipeline; this change does not expire or remove them.
 
 Windows build feasibility and missing cross-dependencies: `windows_build.md`.
+
+## Base station power
+
+vrmonitor wakes and sleeps the base stations over Bluetooth, through the serial port of
+a headset's built-in receiver, but first asks the headset's driver to switch that
+receiver's radio, with `IVRDebug::DriverDebugRequest(0, ...)`: `set_radio_mode_ble` /
+`set_radio_mode_valve` answer `1` or `0`, `get_radio_mode` answers `B`, `V` or `0`. A
+failed first switch makes vrmonitor give up for the whole session, so the stations
+neither wake when SteamVR starts nor sleep when it closes.
+
+In the hybrid setup these requests reach the stock driver through the headset's proxy
+(`stock_hmd.hpp`), and it can't serve them: it never sees the receivers. So
+`StockHmd::SetRequestHandler` lets ours answer first (`Provider::RadioRequest`, as stock
+`0x1eaa9` in the Windows DLL, 2.19.2); anything else still goes to the stock driver. The
+commands run on the thread that owns the receiver, like pairing
+(`UsbTransport::TakeRadioCommands`). Reports, and which receiver: `usb/radio_mode.hpp`.
+Checked on a Bigscreen Beyond's receivers.
 
 ## Tracking quality
 

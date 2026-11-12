@@ -174,13 +174,19 @@ public class HostBridge
     /// The factory application bytes inside a flash dump, or null when the dump already holds
     /// one of our patched builds — archiving a cracked image as "原始固件" would be worse than
     /// archiving nothing at all.
+    ///
+    /// The stock image is much longer than the patched one: its code runs to 0x13BF8 on the
+    /// units we have, 31 KB past where lhbs ends. Keeping only the first 49,408 bytes and
+    /// writing those back left the rest of the stock code as 0xFF, and a restored unit would
+    /// not boot at all.
     private static byte[]? FactoryPart(byte[] dump)
     {
         if (dump.Length < Flashing.AppBytes) return null;
-        var app = dump.AsSpan(0, Flashing.AppBytes).ToArray();
-        if (!Flashing.VectorsOk(app)) return null;
-        if (Probe.IsPatchImage(app)) return null;
-        return app;
+        if (!Flashing.VectorsOk(dump)) return null;
+        if (Probe.IsPatchImage(dump)) return null;
+        var end = dump.Length;
+        while (end > Flashing.AppBytes && dump[end - 1] == 0xFF) end--;
+        return dump.AsSpan(0, end).ToArray();
     }
 
     private void Emit(string text, string level = "")
@@ -255,11 +261,11 @@ public class HostBridge
 
         var image = File.ReadAllBytes(path);
 
-        // Both paths write the application area and stop there. Everything past 49,664 bytes —
-        // the leftover stock code, the snapshot sectors, the EEPROM dump — is left untouched.
-        if (image.Length != Flashing.AppBytes)
+        // Both paths write the application area and stop there. The stock image is longer
+        // than the patched one (80,896 vs 49,408 on our units) and must go in whole.
+        if (image.Length < Flashing.AppBytes || image.Length > Flashing.FlashBytes)
         {
-            Emit($"镜像 {image.Length} 字节，不是 {Flashing.AppBytes}，拒绝写入", "warn");
+            Emit($"镜像 {image.Length} 字节，不在 {Flashing.AppBytes}..{Flashing.FlashBytes} 范围内，拒绝写入", "warn");
             return;
         }
         if (!Flashing.VectorsOk(image)) { Emit("镜像向量校验不通过，拒绝写入", "warn"); return; }

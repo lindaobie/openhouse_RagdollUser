@@ -95,8 +95,9 @@ int Usage() {
           "  lhtool track IN.lhraw [--db DATABASE.json]\n"
           "  lhtool track live [SECONDS] [--db DATABASE.json]\n"
           "  lhtool session IN.lhraw|live [--seconds N] [--rate HZ] [--room ROOM.json] [--realtime] [--disable SERIAL]... [--settings SETTINGS.json] [--steam-db DB.json|-] [--preinit DIR|-]\n"
-          "      [--from S] [--to S] [--only SERIAL]... [--trace OUT.jsonl] [--smoothing S] [--no-acceleration]  replay window (capture seconds),\n"
-          "      devices, and every pose at 100 Hz of capture time\n"
+          "      [--from S] [--to S] [--only SERIAL]... [--trace OUT.jsonl] [--smoothing S] [--no-acceleration] [--mixed-light]\n"
+          "      replay window (capture seconds), devices, and every pose at 100 Hz of capture time;\n"
+          "      --mixed-light: 1.0 and 2.0 base stations together, as the SteamVR settings switch\n"
           "      liblh session: shared room map, roles from device JSON, Index input; JSON Lines\n"
           "  lhtool haptics SERIAL [--frequency HZ] [--amplitude 0..1] [--duration S] [--pulses N] [--capture OUT]\n"
           "      direct receiver vibration diagnostic; prints actual HID write results\n"
@@ -285,6 +286,7 @@ int SessionCommand(int argc, char** argv) {
     else if (a == "--to" && i + 1 < argc) options.replayTo = std::atof(argv[++i]);
     else if (a == "--only" && i + 1 < argc) options.replayOnly.push_back(argv[++i]);
     else if (a == "--trace" && i + 1 < argc) options.replayTracePath = argv[++i];
+    else if (a == "--mixed-light") options.mixedLight.enabled = true;
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
   }
   auto session = lh::Session::Create(options);
@@ -349,6 +351,14 @@ int TrimCommand(int argc, char** argv) {
   lh::usb::RawCaptureReader in;
   lh::usb::RawCaptureWriter out;
   if (!in.Open(argv[2])) { fprintf(stderr, "cannot open %s\n", argv[2]); return 1; }
+  {
+    // Opening the output truncates it: the same file as the input erased the recording.
+    std::error_code ec;
+    if (std::filesystem::equivalent(argv[2], argv[3], ec)) {
+      fprintf(stderr, "the output is the input (%s): write the trimmed copy somewhere else\n", argv[3]);
+      return 1;
+    }
+  }
   if (!out.Open(argv[3])) { fprintf(stderr, "cannot create %s\n", argv[3]); return 1; }
   double start = -1;
   size_t kept = 0, dropped = 0;

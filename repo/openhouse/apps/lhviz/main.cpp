@@ -451,7 +451,21 @@ int main(int argc, char** argv) {
       ImGui::Text("velocity  %+.2f %+.2f %+.2f m/s", p.velocity[0], p.velocity[1], p.velocity[2]);
       ImGui::Text("ang. vel  %+.2f %+.2f %+.2f rad/s", p.angularVelocity[0], p.angularVelocity[1], p.angularVelocity[2]);
       if (i.batteryPercent) ImGui::Text("battery %d%%%s", *i.batteryPercent, i.charging ? " (charging)" : "");
-      if (sel->input) {
+      if (sel->input && (i.role == lh::DeviceRole::Tracker || i.controllerType == lh::ControllerType::ViveWand)) {
+        // Vive wands and HTC trackers: the wand's buttons. On a tracker System is the power
+        // button and Pad the thumb input (pogo pin 5); grip, trigger and menu are pins 3, 4, 6.
+        const auto& in = *sel->input;
+        const bool tracker = i.role == lh::DeviceRole::Tracker;
+        ImGui::SeparatorText(tracker ? "Tracker input (pogo pins)" : "Vive wand input");
+        Light(tracker ? "Power" : "System", in.systemClick); ImGui::SameLine();
+        Light("Menu", in.menuClick); ImGui::SameLine();
+        Light("Grip", in.gripClick); ImGui::SameLine();
+        Light("Trigger", in.triggerClick);
+        Light(tracker ? "Thumb" : "Pad click", in.trackpadClick); ImGui::SameLine();
+        Light("Pad touch", in.trackpadTouch);
+        Bar("trigger", in.trigger);
+        if (!tracker) Stick("trackpad", in.trackpadX, in.trackpadY, in.trackpadTouch);
+      } else if (sel->input) {
         const auto& in = *sel->input;
         ImGui::SeparatorText("Index controller input");
         Light("System", in.systemClick, in.systemTouch); ImGui::SameLine();
@@ -471,7 +485,7 @@ int main(int argc, char** argv) {
         Bar("ring", in.fingerRing);
         Bar("pinky", in.fingerPinky);
       } else if (i.role != lh::DeviceRole::Controller) {
-        ImGui::TextDisabled("inputs are only decoded for Index controllers");
+        ImGui::TextDisabled("no inputs decoded for this device");
       }
       ImGui::End();
     }

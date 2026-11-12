@@ -30,7 +30,7 @@ class LogView {
  private:
   LogFilter filter_;
   bool autoScroll_ = true, paused_ = false;
-  size_t pausedAt_ = 0;
+  uint64_t pausedAt_ = 0;  // lines received when paused (a running total: the log drops old lines)
   char search_[128] = "";
 };
 

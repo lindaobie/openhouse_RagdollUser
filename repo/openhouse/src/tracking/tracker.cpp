@@ -109,7 +109,12 @@ struct Tracker::Impl {
   void Drain(const DeviceId& id, Device& d) {
     BaseConfig config; BaseDynamicState dynamic;
     while (d.source->PopBaseConfig(&config, &dynamic)) {
-      d.direct->OnBaseConfig(config, dynamic);
+      // Kept and shared, as DeviceTracker does: a reset filter (ResetFilter replays `bases`)
+      // and the other devices know the base at once, instead of waiting ~20 s for its OOTX
+      // to decode again (#47 finding 2).
+      bases[config.serial] = {config, dynamic};
+      for (auto& [otherId, other] : devices)
+        if (other.direct) other.direct->OnBaseConfig(config, dynamic);
       Log(id + ": OOTX base " + std::to_string(config.serial));
     }
     ImuSample imu;

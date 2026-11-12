@@ -29,7 +29,7 @@ namespace fs = std::filesystem;
 // A plain zip (deflate, data descriptors, no zip64: 4 GB per file and in total).
 class ZipWriter {
  public:
-  bool Open(const std::string& path) {
+  bool Open(const fs::path& path) {
     out_.open(path, std::ios::binary | std::ios::trunc);
     return bool(out_);
   }
@@ -144,6 +144,13 @@ std::string Timestamp(const char* format) {
   return text;
 }
 
+// For names in the zip (flagged UTF-8) and messages. path::string() converts to the
+// Windows code page and throws for what it can't hold (#34: nothing here may throw).
+std::string Utf8(const fs::path& p) {
+  const auto s = p.u8string();
+  return std::string(s.begin(), s.end());
+}
+
 // The newest *.lhraw in dir (the settings page's recordings), if any.
 fs::path NewestRecording(const fs::path& dir) {
   std::error_code ec;
@@ -163,7 +170,12 @@ std::string BugReportDirectory() {
 #ifdef _WIN32
   PWSTR path = nullptr;
   std::string documents;
-  if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &path))) documents = fs::path(path).string();
+  if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &path))) {
+    try {
+      documents = fs::path(path).string();
+    } catch (const std::exception&) {  // not in the code page: the home fallback below
+    }
+  }
   CoTaskMemFree(path);
   if (documents.empty()) documents = platform::Home() + "/Documents";
 #else
@@ -183,7 +195,8 @@ std::string BugReportDirectory() {
   return documents + "/openhouse reports";
 }
 
-std::string SaveBugReport(const BugReportOptions& options, std::string* error) {
+namespace {
+std::string SaveBugReportOnce(const BugReportOptions& options, std::string* error) {
   auto fail = [&](const std::string& why) {
     if (error) *error = why;
     return std::string();
@@ -191,8 +204,10 @@ std::string SaveBugReport(const BugReportOptions& options, std::string* error) {
   const fs::path dir = BugReportDirectory();
   std::error_code ec;
   fs::create_directories(dir, ec);
-  if (ec) return fail("cannot create " + dir.string() + ": " + ec.message());
-  const fs::path zip = dir / ("openhouse-report-" + Timestamp("%Y%m%d-%H%M%S") + ".zip");
+  if (ec) return fail("cannot create " + Utf8(dir) + ": " + ec.message());
+  // The process id too: the driver and the viewer can both save one in the same second (#46).
+  const fs::path zip = dir / ("openhouse-report-" + Timestamp("%Y%m%d-%H%M%S") + "-" +
+                              std::to_string(platform::ProcessId()) + ".zip");
 
   // (name in the zip, source); a missing one is listed as such in info.txt.
   std::vector<std::pair<std::string, fs::path>> files;
@@ -200,10 +215,10 @@ std::string SaveBugReport(const BugReportOptions& options, std::string* error) {
   for (const char* name : {"roommap.json", "hostframe.json", "settings.json"})
     files.push_back({std::string("config/") + name, config / name});
   for (const auto& e : fs::directory_iterator(config / "preinit", ec))
-    if (e.path().extension() == ".json") files.push_back({"config/preinit/" + e.path().filename().string(), e.path()});
+    if (e.path().extension() == ".json") files.push_back({"config/preinit/" + Utf8(e.path().filename()), e.path()});
   const fs::path recording = !options.recording.empty() ? fs::path(options.recording)
                                                          : NewestRecording(fs::path(platform::DataDirectory()) / "recordings");
-  if (!recording.empty()) files.push_back({"recording/" + recording.filename().string(), recording});
+  if (!recording.empty()) files.push_back({"recording/" + Utf8(recording.filename()), recording});
   const fs::path logs = fs::path(platform::SteamRoot()) / "logs";
   for (const char* name : {"vrserver.txt", "vrserver.previous.txt"})
     files.push_back({std::string("steamvr/") + name, logs / name});
@@ -213,25 +228,39 @@ std::string SaveBugReport(const BugReportOptions& options, std::string* error) {
        << "saved " << Timestamp("%Y-%m-%d %H:%M:%S") << "\n"
        << "system: " << SystemLine() << "\n";
   if (recording.empty()) info << "recording: none (turn on Record session in SteamVR's openhouse settings)\n";
-  else info << "recording: " << recording.filename().string() << "\n";
+  else info << "recording: " << Utf8(recording.filename()) << "\n";
   std::vector<std::pair<std::string, fs::path>> present;
   for (const auto& f : files) {
-    if (fs::is_regular_file(f.second, ec)) present.push_back(f);
-    else info << "missing: " << f.second.string() << "\n";
+    // Present if it opens: one that is there but unreadable lost the whole report (#46).
+    if (fs::is_regular_file(f.second, ec) && std::ifstream(f.second, std::ios::binary)) present.push_back(f);
+    else info << "missing: " << Utf8(f.second) << "\n";
   }
   if (!options.summary.empty()) info << "\n" << options.summary << (options.summary.back() == '\n' ? "" : "\n");
 
   ZipWriter writer;
-  if (!writer.Open(zip.string())) return fail("cannot write " + zip.string());
+  if (!writer.Open(zip)) return fail("cannot write " + Utf8(zip));
   bool ok = writer.AddText("info.txt", info.str());
   if (!options.log.empty()) ok = ok && writer.AddText("openhouse-log.txt", options.log);
   for (const auto& [name, source] : present) ok = ok && writer.AddFile(name, source);
   ok = writer.Close() && ok;
   if (!ok) {
     fs::remove(zip, ec);
-    return fail("writing " + zip.string() + " failed (out of space, or a file over 4 GB)");
+    return fail("writing " + Utf8(zip) + " failed (out of space, or a file over 4 GB)");
   }
-  return zip.string();
+  return Utf8(zip);
+}
+}  // namespace
+
+// Nothing may throw out of here: both callers run it on their own thread (#34, #46).
+std::string SaveBugReport(const BugReportOptions& options, std::string* error) {
+  try {
+    return SaveBugReportOnce(options, error);
+  } catch (const std::exception& e) {
+    if (error) *error = e.what();
+  } catch (...) {
+    if (error) *error = "unexpected error";
+  }
+  return {};
 }
 
 }  // namespace lh

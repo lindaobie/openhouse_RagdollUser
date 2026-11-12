@@ -9,6 +9,7 @@
 #include <cstdlib>
 
 #include "pose_solver.hpp"
+#include "pulse_sorter.hpp"
 
 namespace lh {
 namespace {
@@ -390,6 +391,7 @@ bool LighthouseDirect::ApplyOpticalResiduals(const OpticalFrame& frame, const Ba
   const int alt = slot == 0 ? -1 : kAltBaseIndex[slot - 1];
   std::vector<Residual> residuals;
   std::vector<double> z, facing;
+  std::vector<bool> sorted;
   for (const auto& s : samples) {
     const int idx = model_.IndexOf(s.sensor);
     const auto point = model_.points[size_t(idx)], normal = model_.normals[size_t(idx)];
@@ -405,6 +407,7 @@ bool LighthouseDirect::ApplyOpticalResiduals(const OpticalFrame& frame, const Ba
       [=](const double* x, double* r) { r[0] = SensorAngular(x, offset, point.data(), s.axis, cal.data(), alt, baseModel); },
       [=](const Jet* x, Jet* r) { r[0] = SensorAngular(x, offset, point.data(), s.axis, cal.data(), alt, baseModel); }});
     z.push_back(s.angle); facing.push_back(cos);
+    sorted.push_back((s.flags2 & kSampleSorted) != 0);
   }
   // 0x36f740: when every sample fails the facing cutoff it skips the update but
   // still returns PredictTo's result (true); x, P and time are left untouched.
@@ -429,6 +432,14 @@ bool LighthouseDirect::ApplyOpticalResiduals(const OpticalFrame& frame, const Ba
       grazing = std::atan(arg);
     }
     R(i, i) = variance + grazing * grazing;
+    // Not stock (SetMixedLightScatter): light in LH1 mode in a room with both kinds of station.
+    if (sorted[size_t(i)]) {
+      const double period = frame.averagePeriod > 0 ? frame.averagePeriod : 0.02;
+      const double angle = sortedScatter_ * 6.283185307179586 / period;
+      R(i, i) += angle * angle;
+    } else if (base.model == 1) {
+      R(i, i) += lh1Scatter_ * lh1Scatter_;
+    }
   }
   R(m - 1, m - 1) = 1e-8;
   // Not stock: right after a reseed (reacquired with a carried calibration, so already
@@ -443,7 +454,10 @@ bool LighthouseDirect::ApplyOpticalResiduals(const OpticalFrame& frame, const Ba
   if (!ok) return false;
   time_ = time;
   const uint64_t before = filter_.updateCount;
-  if (hits >= 4) ++filter_.updateCount;
+  if (hits >= 4) {
+    ++filter_.updateCount;
+    lastWellLit_ = time;
+  }
   if (before < 201 && filter_.updateCount > 200) {
     // 0x350450: re-seed IMU-parameter variances (diagonal only) at CALIBRATED.
     auto& P = filter_.P;
@@ -519,8 +533,13 @@ LighthouseDirect::Predicted LighthouseDirect::PredictNow() const {
     if (!(s.saturated & 0x38)) {
       w = imuRot.transpose() * (Eigen::Vector3d(s.gyro[0], s.gyro[1], s.gyro[2]) - Eigen::Vector3d(x[19], x[20], x[21]));
     }
-    Eigen::Vector3d a(x[6], x[7], x[8]);
-    if (!(s.saturated & 0x7)) {
+    // A clipped accelerometer reading is used as it is: it says the device accelerates at
+    // least that hard. Replacing the sample with the filter's acceleration (up to 120 ms
+    // old) ignored the hard stop at the end of a punch, the hardest acceleration of all,
+    // and the output flew on past the stop until the late light pulled it back (a user's
+    // Index controller: 10 cm past and back in 65 ms; error while moving p90 96 -> 52 mm).
+    Eigen::Vector3d a;
+    {
       const Eigen::Vector3d meas(s.accel[0], s.accel[1], s.accel[2]);
       const Eigen::Vector3d scaled((meas[0] - x[22]) * x[25], (meas[1] - x[23]) * x[26], (meas[2] - x[24]) * x[27]);
       a = q * (imuRot.transpose() * scaled) - gravity;
@@ -542,6 +561,61 @@ LighthouseDirect::Predicted LighthouseDirect::PredictNow() const {
   for (int i = 0; i < 3; ++i) { out.p[i] = p[i]; out.v[i] = v[i]; out.w[i] = w[i]; out.a[i] = lastA[i]; }
   out.q[0] = q.w(); out.q[1] = q.x(); out.q[2] = q.y(); out.q[3] = q.z();
   return out;
+}
+
+int LighthouseDirect::ExpectedHits(int sensor, double t, ExpectedHit* out) const {
+  // A pose is only worth asking if light has pinned it down lately. A frame of a sensor or two
+  // doesn't: on those alone a still headset slid 3 m, refusing what would have held it.
+  constexpr double kTooOld = 0.25;
+  if (!slots_[0] || observedTime_.value_or(time_) - lastWellLit_ > kTooOld) return 0;
+  const int idx = model_.IndexOf(sensor);
+  if (idx < 0) return 0;
+  if (expectedFilterTime_ != time_ || (!imu_.empty() && imu_.back().time - expectedTime_ > 0.002)) {
+    const Predicted now = PredictNow();
+    std::copy(filter_.x, filter_.x + direct::kStateSize, expectedState_);
+    for (int i = 0; i < 3; ++i) {
+      expectedState_[i] = now.p[i];
+      expectedState_[3 + i] = now.v[i];
+      expectedState_[6 + i] = now.a[i];
+      expectedState_[13 + i] = now.w[i];
+    }
+    for (int i = 0; i < 4; ++i) expectedState_[9 + i] = now.q[i];
+    expectedTime_ = now.time;
+    expectedFilterTime_ = time_;
+  }
+  const double dt = t - expectedTime_;
+  if (std::fabs(dt) > 0.1) return 0;
+  const auto point = model_.points[size_t(idx)], normal = model_.normals[size_t(idx)];
+  // How far the pose may have drifted since light last corrected it: a share of how far it has
+  // gone since, as a hard swing runs past what the accelerometer reads.
+  constexpr double kShare = 0.5;
+  constexpr double kMostWindow = 0.15;  // any wider and a hit often fits more than one station
+  const double sinceLight = std::max(0.0, t - time_);
+  const double speed = Eigen::Vector3d(expectedState_ + 3).norm();
+  const double accel = Eigen::Vector3d(expectedState_ + 6).norm();
+  const double adrift = kShare * (speed * sinceLight + 0.5 * accel * sinceLight * sinceLight);
+  int n = 0;
+  for (int slot = 0; slot < 4; ++slot) {
+    if (!slots_[slot]) continue;
+    const auto base = bases_.find(slots_[slot]);
+    if (base == bases_.end()) continue;
+    const int alt = slot == 0 ? -1 : kAltBaseIndex[slot - 1];
+    const auto& config = base->second.config;
+    const double facing = SensorNormalCosAngle(expectedState_, dt, point.data(), normal.data(), alt);
+    double inBase[3];
+    SensorInBase(expectedState_, dt, point.data(), alt, inBase);
+    const double distance = std::max(0.3, Eigen::Vector3d(inBase).norm());
+    for (int axis = 0; axis < 2; ++axis) {
+      ExpectedHit& e = out[n++];
+      e.base = slots_[slot];
+      e.lh2 = config.model != 1;
+      e.axis = axis;
+      e.angle = SensorAngular(expectedState_, dt, point.data(), axis, config.cal.data(), alt, config.model);
+      e.facing = facing > 0 && std::isfinite(e.angle);
+      e.window = std::min(kMostWindow, adrift / distance);
+    }
+  }
+  return n;
 }
 
 DeviceTrackingInfo LighthouseDirect::Info() const {
@@ -610,6 +684,7 @@ bool LighthouseDirect::SeedPose(const Seed& seed) {
   slots_[0] = seed.base;
   for (int slot = 1; slot < 4; ++slot) slots_[slot] = 0;
   time_ = lastOpticalTime_ = seed.time;
+  lastWellLit_ = seed.time;  // whoever seeded it has just pinned it down
   while (!imu_.empty() && imu_.front().time < seed.time) imu_.pop_front();
   return true;
 }
@@ -669,7 +744,7 @@ std::string LighthouseDirect::HealthCheck(double now) const {
     std::snprintf(text, sizeof text, "bad base station orientation ( %.4g, %.4g )", x[16] * 57.29577951308232,
                   x[17] * 57.29577951308232);
     reason = text;
-  } else if (std::fabs(x[18] - 9.80665) > 0.49033249999999996) {
+  } else if (std::fabs(x[18] - 9.80665) > filter_.gravityTolerance) {
     std::snprintf(text, sizeof text, "unlikely gravity %.3g m/s/s", x[18]);
     reason = text;
   } else if (x[28] * x[28] + x[29] * x[29] + x[30] * x[30] > 0.06853891945200943) {

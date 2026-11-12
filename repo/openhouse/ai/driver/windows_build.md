@@ -6,10 +6,13 @@
 
 * `build-win64/openvr/lighthouse/bin/win64/driver_lighthouse.dll`;
 * `apps/`: `liblh.dll`, `openhouse-viewer.exe`, `openhouse-compare.exe`, `lhviz.exe`,
-  `lhtool.exe`, `lhcapture.exe`, `openhouse-check.exe`;
+  `lhtool.exe`, `lhcapture.exe`, `openhouse-check.exe`; `openhouse-installer.exe` at the top;
 * `dist/openhouse-windows-x64.zip`: stripped binaries, `LICENSE.txt`, dependency notices
-  (`licenses/`), `BUILD.json` (hashes), the settings page schema, and the installer
-  (`Install-Driver.bat` / `Uninstall-Driver.bat` run `openhouse-driver.ps1`).
+  (`licenses/`), `BUILD.json` (hashes), the settings page schema, and the installer.
+
+Every Windows binary carries a `VERSIONINFO` resource and executables an `asInvoker`
+manifest (`cmake/windows/lh_windows_resources.cmake`): unsigned binaries without them
+score worse with Windows Defender, which flagged releases.
 
 The driver DLL is self-contained: Ceres, glog/gflags, hidapi, zlib and compiler
 runtimes are statically linked. PE import inspection checks that it needs only
@@ -51,15 +54,44 @@ python3 scripts/package-windows.py build-win64 "$VCPKG_ROOT/installed/x64-mingw-
 baseline, artifact hashes and PE imports. Do not mistake an artifact built from a
 dirty tree for that commit alone.
 
-## Windows installer (`scripts/windows-driver.ps1`)
+## Building natively on Windows (MSVC)
 
-Shipped as `openhouse-driver.ps1` behind `Install-Driver.bat` / `Uninstall-Driver.bat`.
-It refuses to run while a host is running, keeps the stock DLL as
+Verified 2026-11-09 with Visual Studio Build Tools 2022 (17.14, MSVC 19.44, its bundled
+CMake and Ninja) and a dedicated vcpkg checkout: every suite passes (unit, replay,
+runtime, OpenVR components, the mock host loading the driver DLL, capture), oracle tests
+excluded. From a "x64 Native Tools" prompt:
+
+```
+cmake -S . -B build-msvc -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+  -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
+  -DVCPKG_OVERLAY_TRIPLETS=%CD%\triplets -DVCPKG_TARGET_TRIPLET=x64-windows-static-avx2 ^
+  -DVCPKG_MANIFEST_FEATURES="tests;viewer" -DOPENVR_INCLUDE_DIR=<dir with openvr_driver.h> ^
+  -DLH_BUILD_ORACLE_TESTS=OFF
+cmake --build build-msvc
+ctest --test-dir build-msvc --output-on-failure
+```
+
+MSVC needs the code to stay off GCC-only and POSIX-only spellings: `__attribute__` behind
+`__GNUC__`, no `<unistd.h>`/`getpid`/`mkstemp` in tests (`platform::ProcessId`, the temp
+directory), `openhouse-check` (a GUI app with `main`) links with
+`/ENTRY:mainCRTStartup`, `-municode` is for MinGW only (MSVC starts `wmain` itself), and
+the linker's own manifest is off (`/MANIFEST:NO`) because the `.rc` already embeds one.
+The first configure builds Ceres and friends (~15 min). The shared library is `lh.dll`
+there (`liblh.dll` with MinGW).
+
+## Windows installer (`apps/openhouse-installer`)
+
+A console exe (it replaced `Install-Driver.bat` running `powershell -ExecutionPolicy
+Bypass`, a dropper pattern Defender flagged). Without arguments it asks install or
+uninstall; `--install`, `--uninstall`, `--status`, `--steamvr PATH`, `--yes`. It offers
+to close Steam / SteamVR (they hold the DLL open), overwrites with retries, keeps the stock DLL as
 `driver_lighthouse.dll.stock` (needed for the headset display), verifies the installed
 hash, installs the settings page schema (an existing one is kept as `.stock`), and
 registers the update check (`openhouse-check.exe` in `%LOCALAPPDATA%\openhouse`,
 autolaunched overlay). SteamVR is found through OpenVR's runtime path file, then
-Steam's registry path; `-SteamVRPath` overrides. Uninstall reverses all of it.
+Steam's registry path; `--steamvr` overrides. Whenever the installed DLL lacks the
+marker `liblh session started` it is SteamVR's (a newer one after an update) and becomes
+the backup. Uninstall reverses all of it, but keeps a newer SteamVR DLL over an old backup.
 
 ## Platform handling
 

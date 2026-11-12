@@ -1,0 +1,34 @@
+; Windows exports of driver_lighthouse.dll.
+;
+; HmdDriverFactory is what SteamVR loads. The hid_* entries are the hidapi this DLL is
+; built with (statically), exported as themselves rather than through wrappers: a driver
+; that hooks the lighthouse driver's HID access (e.g. to rewrite a headset's config as it
+; is read, #32) can find them with GetProcAddress and detour them, and every HID call this
+; driver makes goes through them. hidapi loads hid.dll with GetProcAddress, so hooking the
+; DLL's imports, as works on the stock driver, misses it.
+;
+; Windows only: on Linux the driver's symbols stay hidden (exports.map) so a host's own
+; hidapi (monado-service) and ours can't replace each other.
+EXPORTS
+  HmdDriverFactory
+  hid_init
+  hid_exit
+  hid_enumerate
+  hid_free_enumeration
+  hid_open
+  hid_open_path
+  hid_close
+  hid_read
+  hid_read_timeout
+  hid_write
+  hid_set_nonblocking
+  hid_get_feature_report
+  hid_send_feature_report
+  hid_get_input_report
+  hid_get_manufacturer_string
+  hid_get_product_string
+  hid_get_serial_number_string
+  hid_get_indexed_string
+  hid_error
+  hid_version
+  hid_version_str

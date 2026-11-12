@@ -7,8 +7,28 @@ find_steamvr() {
   done
   echo "SteamVR not found; set STEAMVR_DIR" >&2; exit 1
 }
-if pgrep -x vrserver >/dev/null || pgrep -x monado-service >/dev/null || pgrep -x wivrn-server >/dev/null; then
-  echo "Close SteamVR, Monado and WiVRn first." >&2; exit 1
+# Anything with the driver loaded (or about to load it) must be closed first: the
+# installer offers to close it.
+runtimes=(vrserver vrmonitor vrcompositor vrdashboard vrwebhelper vrstartup monado-service wivrn-server)
+running_runtimes() {
+  local name found=()
+  for name in "${runtimes[@]}"; do pgrep -x "$name" >/dev/null && found+=("$name"); done
+  echo "${found[*]:-}"
+}
+running=$(running_runtimes)
+if [[ -n $running ]]; then
+  echo "These are running and use the lighthouse driver: $running"
+  if [[ ! -t 0 ]]; then echo "Close them first, then run this again." >&2; exit 1; fi
+  read -r -p "Close them now? Unsaved work in VR apps is lost. [y/N] " answer
+  [[ $answer == [yY]* ]] || { echo "Close them first, then run this again." >&2; exit 1; }
+  for name in $running; do pkill -x "$name" 2>/dev/null || true; done
+  for _ in $(seq 1 50); do [[ -z $(running_runtimes) ]] && break; sleep 0.2; done
+  if [[ -n $(running_runtimes) ]]; then
+    for name in $(running_runtimes); do pkill -9 -x "$name" 2>/dev/null || true; done
+    sleep 1
+  fi
+  [[ -z $(running_runtimes) ]] || { echo "Couldn't close: $(running_runtimes). Close them by hand, then run this again." >&2; exit 1; }
+  echo "Closed."
 fi
 dir="$(find_steamvr)/drivers/lighthouse/bin/linux64"
 target="$dir/driver_lighthouse.so"
@@ -33,9 +53,17 @@ check_registration() {
 import json, os, sys
 mode, config, manifest, key = sys.argv[1:]
 path = os.path.join(config, 'appconfig.json')
+# Steam's list of every registered VR app: one that can't be read is left alone (#44),
+# rewriting it from {} dropped all the others.
 try:
     with open(path) as f: data = json.load(f)
-except (FileNotFoundError, ValueError): data = {}
+except FileNotFoundError: data = {}
+except (OSError, ValueError):
+    print(f"cannot read {path}; leaving it as it is (SteamVR update warning not {mode}ed)", file=sys.stderr)
+    sys.exit(0)
+if not isinstance(data, dict):
+    print(f"{path} isn't what Steam writes; leaving it as it is", file=sys.stderr)
+    sys.exit(0)
 paths = [p for p in data.get('manifest_paths') or [] if os.path.normpath(p) != os.path.normpath(manifest)]
 if mode == 'register': paths.append(manifest)
 data['manifest_paths'] = paths
@@ -100,8 +128,32 @@ install_schema() {
   if [[ -f "$schema" ]] && ! grep -q driver_openhouse "$schema"; then cp -p "$schema" "$schema.stock"; fi
   cp "$here/settingsschema.vrsettings" "$schema"
 }
+# Its defaults, for SteamVR's "reset to default": one line added to SteamVR's own
+# default.vrsettings after its opening brace, removed again on uninstall.
+defaults="$(dirname "$schema")/default.vrsettings"
+defaults_line='"driver_openhouse": { "predictWithAcceleration": true, "positionSmoothingMs": 60, "rotationSmoothingMs": 60, "hideLostDevices": false, "record": false, "resetRoom": false, "mixedLight": false, "mixedLightControllers": true, "mixedLightTrackers": true, "mixedLightScout": true },'
+install_defaults() {
+  [[ -f "$defaults" ]] || return 0
+  grep -qF "$defaults_line" "$defaults" && return 0
+  remove_defaults  # an older version's line, with fewer settings
+  local tmp="$defaults.openhouse-tmp"
+  # Its own line after the brace's, with the same ending (SteamVR's file has CRLF).
+  awk -v line="$defaults_line" '{ print } !done && /\{/ { cr = sub(/\r$/, "") ? "\r" : ""; print line cr; done = 1 }' "$defaults" > "$tmp" && cat "$tmp" > "$defaults"
+  rm -f "$tmp"
+}
+remove_defaults() {
+  [[ -f "$defaults" ]] || return 0
+  local tmp="$defaults.openhouse-tmp"
+  # Any version's line: they all start the same.
+  awk '{ l = $0; sub(/\r$/, "", l) } index(l, "\"driver_openhouse\": {") != 1 { print }' "$defaults" > "$tmp" && cat "$tmp" > "$defaults"
+  rm -f "$tmp"
+  return 0
+}
 remove_schema() {
   [[ -f "$schema" ]] && grep -q driver_openhouse "$schema" && rm -f "$schema"
-  [[ -f "$schema.stock" ]] && mv "$schema.stock" "$schema"
+  if [[ -f "$schema.stock" ]]; then
+    # Still there: a SteamVR update replaced ours with a newer one, so the backup is older.
+    if [[ -f "$schema" ]]; then rm -f "$schema.stock"; else mv "$schema.stock" "$schema"; fi
+  fi
   return 0
 }

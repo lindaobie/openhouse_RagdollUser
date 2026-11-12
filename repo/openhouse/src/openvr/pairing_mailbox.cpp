@@ -1,6 +1,7 @@
 #include "pairing_mailbox.hpp"
 
 #include <chrono>
+#include <algorithm>
 #include <cstring>
 
 #include <nlohmann/json.hpp>
@@ -54,7 +55,7 @@ std::string PairingMailbox::Discover(Session& session, const std::string& expect
   for (const auto& r : session.Receivers())
     j["dongles"].push_back({{"serial", r.serial}, {"firmwareVersion", ""}, {"connectedSerial", r.connected}});
   if (messageId) j["message_id"] = json::parse(*messageId);
-  return j.dump();
+  return j.dump(-1, ' ', false, json::error_handler_t::replace);  // a receiver serial may not be UTF-8 (#45)
 }
 
 void PairingMailbox::Finish(Session& session, const std::string& result, const std::string& connected,
@@ -65,7 +66,7 @@ void PairingMailbox::Finish(Session& session, const std::string& result, const s
   if (pairing_->haveMessageId) j["message_id"] = pairing_->messageId;
   const Pairing done = *pairing_;
   pairing_.reset();
-  Reply(done.returnAddress, j.dump());
+  Reply(done.returnAddress, j.dump(-1, ' ', false, json::error_handler_t::replace));
   if (done.sendStatus) Reply(done.returnAddress, Discover(session, expected, nullptr));
   if (log_) log_("pairing: receiver " + done.receiver + ": " + result + (connected.empty() ? "" : " (" + connected + ")"));
 }
@@ -82,8 +83,13 @@ void PairingMailbox::Poll(Session& session, const std::string& expected) {
     if (r != 0 || needed == 0) break;
     const json message = json::parse(std::string(buffer_.data(), strnlen(buffer_.data(), buffer_.size())), nullptr, false);
     if (!message.is_object()) continue;
-    const std::string type = message.value("type", "");
-    const std::string address = message.value("returnAddress", "");
+    // Fields of another JSON type read as missing: value() throws on them (#45).
+    const auto text = [&](const char* key) {
+      const auto it = message.find(key);
+      return it != message.end() && it->is_string() ? it->get<std::string>() : std::string();
+    };
+    const std::string type = text("type");
+    const std::string address = text("returnAddress");
     const std::string id = message.contains("message_id") ? message.at("message_id").dump() : "";
     const std::string* idp = id.empty() ? nullptr : &id;
     if (log_) log_("pairing: " + (type.empty() ? std::string("message without a type") : type) + " from " +
@@ -93,9 +99,9 @@ void PairingMailbox::Poll(Session& session, const std::string& expected) {
       if (log_) log_("pairing: dongles " + reply);
       Reply(address, reply);
     } else if (type == "start_pairing") {
-      const std::string serial = message.value("serial", "");
+      const std::string serial = text("serial");
       const double timeout = message.contains("timeoutSeconds") && message.at("timeoutSeconds").is_number()
-                                 ? message.at("timeoutSeconds").get<double>()
+                                 ? std::clamp(message.at("timeoutSeconds").get<double>(), 0.0, 600.0)
                                  : 10.0;
       if (pairing_) Finish(session, "canceled", "", expected);
       std::string before;
@@ -108,7 +114,10 @@ void PairingMailbox::Poll(Session& session, const std::string& expected) {
       p.sawEmpty = before.empty();
       p.haveMessageId = message.contains("message_id") && message.at("message_id").is_number();
       if (p.haveMessageId) p.messageId = message.at("message_id").get<double>();
-      p.sendStatus = message.value("sendStatusUpdates", false);
+      {
+        const auto it = message.find("sendStatusUpdates");
+        p.sendStatus = it != message.end() && it->is_boolean() && it->get<bool>();
+      }
       p.deadline = Now() + timeout;
       pairing_ = p;
       if (!session.SetPairing(serial, timeout)) {
@@ -118,7 +127,7 @@ void PairingMailbox::Poll(Session& session, const std::string& expected) {
       if (log_) log_("pairing: receiver " + serial + " in pairing mode for " + std::to_string(int(timeout)) + " s");
       if (p.sendStatus) Reply(address, Discover(session, expected, nullptr));
     } else if (type == "stop_pairing") {
-      if (pairing_ && message.value("serial", "") == pairing_->receiver) {
+      if (pairing_ && text("serial") == pairing_->receiver) {
         session.SetPairing(pairing_->receiver, 0);
         if (!address.empty()) pairing_->returnAddress = address;
         Finish(session, "canceled", "", expected);

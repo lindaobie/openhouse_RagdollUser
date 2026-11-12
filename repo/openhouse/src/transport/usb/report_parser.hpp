@@ -54,6 +54,23 @@ class ImuReportParser {
   ImuEmitter imu_;
 };
 
+// A wired device's buttons interface (iface 2), report 0x01, as libsurvive reads it
+// (driver_vive.c, USB_IF_TRACKER*_BUTTONS; offsets here count the report id): u16 type at
+// [1]; type 0x0100 = user input: u32 buttons at [8], int16 trackpad x/y at [0x14]/[0x16],
+// u16 trigger at [0x1a]; Index controllers: type 0x0700 with the 0xa1 record (see Parse);
+// type 0x0400: battery byte at [14]. The wired button bits (trigger 0,
+// grip 2, menu 12, system 13, trackpad click 18, touch 20; libsurvive WiredWandMapping) are
+// re-packed into the radio's button byte, so the same decoders read both.
+class ButtonsReportParser {
+ public:
+  ButtonsReportParser(std::shared_ptr<DeviceState> dev, IInputSink* sink) : dev_(std::move(dev)), sink_(sink) {}
+  bool Parse(double hostTime, const uint8_t* data, size_t len);
+
+ private:
+  std::shared_ptr<DeviceState> dev_;
+  IInputSink* sink_;
+};
+
 // Watchman dongle reports 0x23 (one 29-byte packet) / 0x24 (two) — 0x3d1920 / 0x3d18d0.
 class WirelessReportParser {
  public:
@@ -71,6 +88,18 @@ class WirelessReportParser {
   ImuEmitter imu_;
   int version_ = 0;  // +0x128: 0 legacy, 1 Wv2
   Wv2Decoder wv2_;
+  // Not stock: a recording started mid-session (Record Session) has no transition
+  // packet, so every Wv2 packet went to the legacy decoder (#14: no IMU, a few hundred
+  // pulses in 100 s). While on legacy, packets are also tried as Wv2 on two probes (LH2
+  // and LH1 light); legacy failing where one decodes, again and again, is a Wv2 device.
+  Wv2Decoder probe_[2] = {MakeProbe(1), MakeProbe(0)};
+  int probeDecoded_[2] = {0, 0};
+  static Wv2Decoder MakeProbe(int opticalSub) {
+    Wv2Decoder d;
+    d.opticalSub = opticalSub;
+    d.controllerSub = 0;
+    return d;
+  }
   WirelessPacket pkt_;
 };
 

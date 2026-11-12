@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 
@@ -107,6 +108,7 @@ bool RoomMap::Load(const std::string& path, std::string* error) {
       rooms.push_back(std::move(room));
     }
     std::map<uint32_t, std::pair<BaseConfig, BaseDynamicState>> configs;
+    std::map<uint32_t, std::vector<uint8_t>> frames;  // kept only if the whole file loads
     if (j.contains("baseStations")) {
       for (const auto& c : j.at("baseStations")) {
         BaseConfig config;
@@ -124,17 +126,25 @@ bool RoomMap::Load(const std::string& path, std::string* error) {
         if (c.contains("ootxFrame")) {
           std::vector<uint8_t> frame;
           for (char ch : c.at("ootxFrame").get<std::string>()) frame.push_back(ch == '1' ? 1 : ch == '0' ? 0 : 0xff);
-          frames_[config.serial] = frame;
+          frames[config.serial] = frame;
         }
       }
     }
     rooms_ = std::move(rooms);
     for (auto& [serial, c] : configs) configs_[serial] = c;
+    for (auto& [serial, f] : frames) frames_[serial] = std::move(f);
     active_ = -1;
     if (error) error->clear();
     return true;
   } catch (const std::exception& e) {
-    if (error) *error = std::string("room map ") + path + ": " + e.what();
+    // Moved aside, or the next save replaced it with an empty map and every stored
+    // room was lost (#43). Its rooms can still be taken back from that copy by hand.
+    const std::string kept = path + ".bad-" + std::to_string(std::time(nullptr));
+    std::error_code ec;
+    std::filesystem::rename(path, kept, ec);
+    if (error)
+      *error = std::string("room map ") + path + ": " + e.what() +
+               (ec ? std::string(" (could not move it aside: ") + ec.message() + ")" : "; kept as " + kept + ", starting a new map");
     return false;
   }
 }
@@ -171,6 +181,7 @@ bool RoomMap::Save(const std::string& path, std::string* error) const {
     {
       std::ofstream out(temp);
       out << j.dump(2) << "\n";
+      out.close();  // a write error can show only when the buffer goes out
       if (!out) throw std::runtime_error("write failed");
     }
     platform::ReplaceFile(temp, target);
@@ -506,7 +517,8 @@ void RoomMap::Observe(const std::string& device, uint32_t primary, uint32_t alt,
       target->positionVariance = std::max(target->positionVariance, 0.02);
       target->rotationVariance = std::max(target->rotationVariance, 0.0523599 * 0.0523599);
       target->inconsistent = 0;
-      target->solved = false;
+      // Still the solver's (#42): with solved cleared, the next observation from this same
+      // device blended the base half way to its view.
       relearned_.push_back(target->serial);
       Changed();
     }
@@ -586,6 +598,7 @@ void RoomMap::Bump(uint32_t serial, const std::string& why) {
   if (!room || frozen_) return;
   auto found = room->bases.find(serial);
   if (found == room->bases.end()) return;
+  ++bumps_;  // a solve already running was made from keyframes before this (#42)
   RoomBase& b = found->second;
   if (b.origin) {
     if (!OriginGauge()) { Log("Origin base " + Hex(serial) + " knocked (" + why + "), but no other placed base to relearn it against"); return; }
@@ -698,7 +711,9 @@ void RoomMap::ApplySolved(uint32_t serial, const Eigen::Isometry3d& pose, double
     Changed();
   }
   // Bumped: the first confident solve from fresh keyframes is the base's new place.
-  if (b.relearn && pv < kRelearnVariance) {
+  // From enough of the room to stand on: live, re-places from 1-8 keyframes locked
+  // again at once and the next knock followed.
+  if (b.relearn && pv < kRelearnVariance && keyframes >= 40 && (devices >= 2 || keyframes >= 80)) {
     std::snprintf(text, sizeof text, "Room solver: base %08X re-placed after a bump: %.1f mm, %.2f deg (%d keyframes, sigma %.1f mm)",
                   serial, dp * 1000, dr * 57.29577951308232, keyframes, std::sqrt(pv / 3) * 1000);
     Log(text);
@@ -707,6 +722,7 @@ void RoomMap::ApplySolved(uint32_t serial, const Eigen::Isometry3d& pose, double
     b.positionVariance = std::max(pv, kFloorVariance);
     b.rotationVariance = std::max(rv, 1e-9);
     b.observations = keyframes;
+    b.storedObservations = 0;  // earlier sessions' evidence is for the old place: lock again on new solves only
     b.inconsistent = 0;
     b.relearn = false;
     ++b.epoch;
@@ -734,6 +750,7 @@ void RoomMap::ApplySolved(uint32_t serial, const Eigen::Isometry3d& pose, double
     b.positionVariance = std::max(pv, kFloorVariance);
     b.rotationVariance = std::max(rv, 1e-9);
     b.observations = keyframes;
+    b.storedObservations = 0;  // earlier sessions' evidence is for the old place (#42), as after a bump
     b.inconsistent = 0;
     ++b.epoch;
     relearned_.push_back(serial);  // keyframes from before the move are stale

@@ -166,15 +166,12 @@ bool laser_init(void)
     ok &= isl_channel_reg(1, 3, 0x50) && isl_channel_reg(0, 3, 0x50);
     ok &= isl_channel_reg(1, 1, 0x40) && isl_channel_reg(0, 1, 0x40);
     /* stock laser_update_task: bias and drive current from the parameters */
-    /* Some units carry laser.0/1.current = 1 in their EEPROM user partitions: an older
-     * firmware's channel-change saves wrote the power-regulated value back, so the
-     * stored current ratcheted down while the factory partition still holds the real
-     * one (one unit here: user 1/1, factory 127/112). Stock's power loop has no ceiling
-     * and copes; ours caps at boot_current + 60, so such a base cannot reach 30 mW, is
-     * declared faulted and turns into a red-blinking station that never emits.
-     * A current below 40 cannot be a working setting (healthy units run 117-172 and the
-     * stock default is 190), so treat it as missing and use the default. The value is
-     * written back to the EEPROM by the next channel change, which heals the unit. */
+    /* A unit whose stored current was ratcheted down to ~1 by an old firmware cannot come
+     * back on its own: the power loop caps at boot_current + 60, so 1 cannot reach 30 mW and
+     * the base is declared faulty (red LED, never sweeps). The root cause is fixed
+     * (laser_boot_currents_for_save), but the damaged value stays in EEPROM, so treat a
+     * value under 40 as unset and fall back to the stock default. Healthy units run
+     * 117-172 and are unaffected. */
     if (P.laser_0_current < 40) P.laser_0_current = 190;
     if (P.laser_1_current < 40) P.laser_1_current = 190;
     ok &= isl_channel_reg(isl_channel[0], 0, P.laser_0_bias);
@@ -241,6 +238,11 @@ static void apc_sample(int n)
     if (n) { P.laser_1_pwr_detected = det; P.laser_1_pwr_average = pw; }
     else   { P.laser_0_pwr_detected = det; P.laser_0_pwr_average = pw; }
     if (!P.laser_apc || !apc_enabled) return;
+    /* One step per write to the ISL58303: until laser_poll has written the last one, the
+     * power measured is still the old current's, and stepping on it ran the current ahead
+     * of the chip, up to the safety window and a laser fault (red blinking), once the main
+     * loop was slow or the diode warmed (#57.1). */
+    if (current_dirty) return;
 
     float target = n ? P.laser_1_pwr : P.laser_0_pwr;
     uint8_t *cur = n ? &P.laser_1_current : &P.laser_0_current;
@@ -250,6 +252,9 @@ static void apc_sample(int n)
      * stopped following the current still ends here, in a fault. */
     int hi = boot_current[n] + 60, lo = boot_current[n] - 60;
     if (hi > 230) hi = 230;
+    /* never below 1: the current is a u8, and from a boot current under 60 the
+     * decrement below wrapped 0 to 255, past the cap, with no fault (#21) */
+    if (lo < 1) lo = 1;
     if (target - pw > 1.0f) {
         if (*cur >= hi) {                   /* would exceed the safety window */
             laser_fault = true;

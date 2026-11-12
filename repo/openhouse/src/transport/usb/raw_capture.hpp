@@ -21,7 +21,8 @@
 
 namespace lh::usb {
 
-enum class EndpointKind : uint8_t { Imu = 0, Optical = 1, Wireless = 2 };
+// Buttons: a wired device's input interface (iface 2; libsurvive's TRACKER*_BUTTONS).
+enum class EndpointKind : uint8_t { Imu = 0, Optical = 1, Wireless = 2, Buttons = 3 };
 
 struct EndpointInfo {
   uint16_t ep = 0;

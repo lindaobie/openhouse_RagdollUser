@@ -36,6 +36,13 @@ struct Result {
   double error = 0;        // cfg+0x28 = sqrt(|p|·cost)
 };
 
+namespace detail {
+// Internal line-search rule, exposed for its focused unit test. LH2's model can
+// produce NaN outside its angular domain; NaN must not be allowed to compare as
+// neither better nor worse and steer the golden-section search into that domain.
+double LineSearchCostOrPenalty(double cost, double alpha);
+}  // namespace detail
+
 // Sufficiency test (0x3a2e30 / 0x3a3370): ≥ 4 hits per axis and 4 non-coplanar
 // sensors (8.5 mm), checked on two-axis sensors, else on each axis separately.
 bool SamplesSufficient(const TrackedObjectModel& obj, const std::vector<OpticalSample>& sorted);

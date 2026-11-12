@@ -86,9 +86,9 @@ void LogView::Draw(TelemetryClient& client) {
   ImGui::SameLine();
   ImGui::Checkbox("Auto-scroll", &autoScroll_);
   ImGui::SameLine();
-  if (ImGui::Checkbox("Pause", &paused_) && paused_) pausedAt_ = client.Logs().size();
+  if (ImGui::Checkbox("Pause", &paused_) && paused_) pausedAt_ = client.LogsReceived();
   ImGui::SameLine();
-  if (ImGui::Button("Clear")) { client.ClearLogs(); pausedAt_ = 0; }
+  if (ImGui::Button("Clear")) { client.ClearLogs(); pausedAt_ = client.LogsReceived(); }
   ImGui::SameLine();
   if (ImGui::Button("Copy shown")) {
     std::string all;
@@ -113,7 +113,13 @@ void LogView::Draw(TelemetryClient& client) {
 
   ImGui::BeginChild("lines", ImVec2(0, 0), ImGuiChildFlags_Borders, ImGuiWindowFlags_HorizontalScrollbar);
   const auto& logs = client.Logs();
-  const size_t end = paused_ ? std::min(pausedAt_, logs.size()) : logs.size();
+  // Paused: the lines received up to then that are still stored. An index would slide to newer
+  // lines once the log is full and drops its oldest (#54.2).
+  size_t end = logs.size();
+  if (paused_) {
+    const uint64_t first = client.LogsReceived() - logs.size();  // running number of logs[0]
+    end = pausedAt_ <= first ? 0 : size_t(std::min<uint64_t>(pausedAt_ - first, logs.size()));
+  }
   std::vector<const LogLine*> shown;
   shown.reserve(end);
   for (size_t i = 0; i < end; ++i)

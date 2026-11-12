@@ -12,7 +12,10 @@ namespace OpenhouseSetup;
 internal static class Probe
 {
     // Sizes of the two driver builds we can tell apart without hashing 8 MB.
-    private const long OpenhouseDriverSize = 8_029_184;
+    // The stock DLL is one known build. Ours changes size with every rebuild (the MinGW
+    // build was 8 MB, the MSVC one 4.4 MB), so identify ours by "clearly bigger than
+    // stock" rather than by an exact length that has to be updated each time.
+    private const long OpenhouseDriverMinSize = 3_000_000;
     private const long StockDriverSize = 2_756_248;
 
     public static JsonObject Snapshot()
@@ -191,7 +194,7 @@ internal static class Probe
         if (dir is null || !Directory.Exists(dir)) return null;
         foreach (var f in Directory.GetFiles(dir, "stock-*.bin").OrderBy(f => f))
         {
-            try { if (new FileInfo(f).Length == Flashing.AppBytes) return f; }
+            try { if (new FileInfo(f).Length >= Flashing.AppBytes) return f; }
             catch { }
         }
         return null;
@@ -201,7 +204,10 @@ internal static class Probe
     /// image apart from a cracked one when deciding what is worth archiving.
     internal static bool IsPatchImage(byte[] app)
     {
-        if (app.Length != Flashing.AppBytes) return false;
+        if (app.Length < Flashing.AppBytes) return false;
+        // Compare against the patched builds' own length: the stock image is longer, and the
+        // bytes past 49,408 must not take part in the comparison.
+        var head = app.AsSpan(0, Flashing.AppBytes);
         var dir = FirmwareDir();
         if (dir is not null && Directory.Exists(dir))
         {
@@ -209,14 +215,13 @@ internal static class Probe
             {
                 try
                 {
-                    if (File.ReadAllBytes(f).AsSpan().SequenceEqual(app)) return true;
+                    if (File.ReadAllBytes(f).AsSpan().SequenceEqual(head)) return true;
                 }
                 catch { }
             }
         }
-        // Older builds are no longer in firmware/ but they all carry the same banner.
-        var head = System.Text.Encoding.ASCII.GetString(app, 0, Math.Min(65536, app.Length));
-        return head.Contains("lhbs ");
+        var text = Encoding.ASCII.GetString(head);
+        return text.Contains("lhbs ");
     }
 
     /// Which known patched image this flash dump starts with, if any. The archived factory
@@ -398,8 +403,8 @@ internal static class Probe
         if (File.Exists(dll))
         {
             var len = new FileInfo(dll).Length;
-            o["driver"] = len == OpenhouseDriverSize ? "openhouse"
-                        : len == StockDriverSize ? "stock"
+            o["driver"] = len == StockDriverSize ? "stock"
+                        : len > OpenhouseDriverMinSize ? "openhouse"
                         : "unknown";
             o["driverSize"] = len;
             o["stockBackup"] = File.Exists(dll + ".stock");

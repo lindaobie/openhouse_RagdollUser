@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include "tracking_source.hpp"
@@ -7,15 +8,20 @@
 
 namespace lh {
 
+namespace {
+tdm::MultiDisambiguator::Mode MultiModeFromEnvironment() {
+  const char* v = std::getenv("LH_MULTISTATION");
+  if (!v) return tdm::MultiDisambiguator::Mode::Auto;
+  const std::string s = v;
+  return s == "off" || s == "0" ? tdm::MultiDisambiguator::Mode::Off
+       : s == "on" || s == "1"  ? tdm::MultiDisambiguator::Mode::On
+                                : tdm::MultiDisambiguator::Mode::Auto;
+}
+}  // namespace
+
 TrackingSource::TrackingSource(int sensorType, const tdm::TdmConfig& config, bool inferSensorType)
-    : inferSensorType_(inferSensorType), tdm_(config, sensorType), multi_(sensorType, [] {
-        const char* v = std::getenv("LH_MULTISTATION");
-        if (!v) return tdm::MultiDisambiguator::Mode::Auto;
-        const std::string s = v;
-        return s == "off" || s == "0" ? tdm::MultiDisambiguator::Mode::Off
-             : s == "on" || s == "1"  ? tdm::MultiDisambiguator::Mode::On
-                                      : tdm::MultiDisambiguator::Mode::Auto;
-      }()) {}
+    : inferSensorType_(inferSensorType), tdm_(config, sensorType), multiMode_(MultiModeFromEnvironment()),
+      multi_(sensorType, multiMode_) {}
 
 void TrackingSource::OnImu(const ImuSample& sample) {
   std::lock_guard lock(mutex_);
@@ -48,23 +54,37 @@ void TrackingSource::OnImu(const ImuSample& sample) {
 
 void TrackingSource::OnLightPulse(const LightPulse& pulse) {
   std::lock_guard lock(mutex_);
+  if (sorting_) {
+    // Reports can come grouped by sensor, so a pulse may be a little older than the last one.
+    constexpr double kBeamDelay = 0.005;
+    sorter_->DueBeamWords(pulse.time - kBeamDelay, [&](double t, int channel, int generation) {
+      sob_.OnBeamWord(t, channel, -1, generation);
+    });
+    int channel = -1;
+    double hitTime = 0;
+    const auto result = sorter_->Sort(pulse.time, pulse.width, pulse.sensor, &channel, &hitTime);
+    if (result == PulseSorter::Result::Hit) sob_.OnSensorWord(hitTime, channel, pulse.sensor, true);
+    if (result != PulseSorter::Result::NotOurs) return;
+  }
   lastPulseImuTime_ = latestImuTime_;
   const int type = tdm_.SensorType();
   tdm_.OnPulse(pulse.sensor, pulse.time, pulse.width);
   if (tdm_.SensorType() != type) multi_.SetSensorType(tdm_.SensorType());
-  multi_.OnPulse(pulse.sensor, pulse.time, pulse.width);
-  if (multi_.Active()) {  // the stock path's frames would be mis-attributed; drop them
+  if (!sorting_ || multiMode_ == tdm::MultiDisambiguator::Mode::On) multi_.OnPulse(pulse.sensor, pulse.time, pulse.width);
+  if (UseMulti()) {  // the stock path's frames would be mis-attributed; drop them
     while (tdm_.PopFrame(nullptr)) {}
   }
 }
 
 void TrackingSource::OnLh2BeamWord(const Lh2BeamWord& word) {
   std::lock_guard lock(mutex_);
+  if (sorter_) sorter_->OnBeamWord(word.time, word.channel, word.bit27);
   sob_.OnBeamWord(word.time, word.channel, word.bit26, word.bit27);
 }
 
 void TrackingSource::OnLh2SensorWord(const Lh2SensorWord& word) {
   std::lock_guard lock(mutex_);
+  if (sorter_) sorter_->OnSensorWord(word.time, word.channel, word.value);
   sob_.OnSensorWord(word.time, word.channel, word.value);
 }
 
@@ -91,14 +111,35 @@ bool TrackingSource::PeekImuTime(DeviceTime* out) const {
 
 bool TrackingSource::PopFrame(OpticalFrame* out) {
   std::lock_guard lock(mutex_);
+  if (sorting_) {
+    // Both paths feed the filter here, and it drops a frame older than the last it used. LH2
+    // frames are held back, so an LH1 frame waits for the LH2 frames older than it.
+    OpticalFrame frame;
+    while (UseMulti() ? multi_.PopFrame(&frame) : tdm_.PopFrame(&frame)) pendingLh1_.push_back(std::move(frame));
+    if (pendingLh1_.empty()) return sob_.PopFrame(out);
+    double first = 1e300;
+    for (const auto& s : pendingLh1_.front().samples) first = std::min(first, s.time + 0.5 * s.width);
+    if (pendingLh1_.front().samples.empty()) first = pendingLh1_.front().syncTime;  // a sweep with no hits
+    double oldest = 0;
+    if (sob_.OldestFrameTime(&oldest) && oldest <= first) return sob_.PopFrame(out);
+    if (sob_.Active() && first > sob_.SettledUpTo()) return false;
+    if (out) *out = std::move(pendingLh1_.front());
+    pendingLh1_.pop_front();
+    return true;
+  }
+  if (!pendingLh1_.empty()) {  // held back when sorting was turned off
+    if (out) *out = std::move(pendingLh1_.front());
+    pendingLh1_.pop_front();
+    return true;
+  }
   if (sob_.PopFrame(out)) return true;
-  return multi_.Active() ? multi_.PopFrame(out) : tdm_.PopFrame(out);
+  return UseMulti() ? multi_.PopFrame(out) : tdm_.PopFrame(out);
 }
 
 bool TrackingSource::PopBaseConfig(BaseConfig* config, BaseDynamicState* dynamic) {
   std::lock_guard lock(mutex_);
   if (sob_.PopBaseConfig(config, dynamic)) return true;
-  if (multi_.Active()) {
+  if (UseMulti()) {
     while (tdm_.PopBaseConfig(nullptr, nullptr)) {}
     return multi_.PopBaseConfig(config, dynamic);
   }
@@ -116,11 +157,11 @@ bool TrackingSource::PopLog(std::string* out) {
   // The multi-station detector's messages matter once it is active; before that it may be
   // trying to make sense of light that isn't lhbs at all (LH2 bases seen in LH1 mode).
   while (multi_.PopLog(out)) {
-    if (!multi_.Active() || sob_.Active()) continue;
+    if (!UseMulti() || sob_.Active()) continue;
     *out = "[multi] " + *out;
     return true;
   }
-  if (multi_.Active()) {  // the two-base sync path re-acquiring in a multi room: noise
+  if (UseMulti()) {  // the two-base sync path re-acquiring in a multi room: noise
     while (tdm_.PopLog(nullptr)) {}
     return false;
   }
@@ -141,6 +182,50 @@ void TrackingSource::SetKnownSobChannels(const std::map<int, std::pair<BaseConfi
 bool TrackingSource::PopIdentity(tdm::TdmDisambiguator::Identity* out) {
   std::lock_guard lock(mutex_);
   return multi_.PopIdentity(out) || tdm_.PopIdentity(out);
+}
+
+void TrackingSource::SetSorting(bool learn, bool sort) {
+  std::lock_guard lock(mutex_);
+  learn = learn || sort;
+  sorting_ = sort;
+  if (learn == (sorter_ != nullptr)) return;
+  if (!learn) {
+    sorter_.reset();
+    return;
+  }
+  sorter_ = std::make_unique<PulseSorter>();
+  if (poseView_) sorter_->SetPose(poseView_, [this](int channel) { return sob_.ChannelSerial(channel); });
+}
+
+bool TrackingSource::Sorting() const {
+  std::lock_guard lock(mutex_);
+  return sorting_;
+}
+
+void TrackingSource::SetPoseView(PulseSorter::PoseView view) {
+  std::lock_guard lock(mutex_);
+  poseView_ = std::move(view);
+  if (sorter_) sorter_->SetPose(poseView_, [this](int channel) { return sob_.ChannelSerial(channel); });
+}
+
+std::vector<PulseSorter::RotorState> TrackingSource::Rotors(double now) const {
+  std::lock_guard lock(mutex_);
+  return sorter_ ? sorter_->Rotors(now) : std::vector<PulseSorter::RotorState>{};
+}
+
+bool TrackingSource::RecentPeriod(int channel, double now, double* period) const {
+  std::lock_guard lock(mutex_);
+  return sorter_ && sorter_->RecentPeriod(channel, now, period);
+}
+
+void TrackingSource::SetRotorDrift(int channel, double drift) {
+  std::lock_guard lock(mutex_);
+  if (sorter_) sorter_->SetDrift(channel, drift);
+}
+
+uint32_t TrackingSource::ChannelSerial(int channel) const {
+  std::lock_guard lock(mutex_);
+  return sob_.ChannelSerial(channel);
 }
 
 }  // namespace lh

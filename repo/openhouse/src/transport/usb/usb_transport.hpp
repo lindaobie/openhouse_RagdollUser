@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <functional>
+#include <future>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -18,6 +19,7 @@
 #include <vector>
 
 #include "lh/input_sink.hpp"
+#include "radio_mode.hpp"
 #include "raw_capture.hpp"
 #include "report_parser.hpp"
 
@@ -32,6 +34,7 @@ struct DeviceCommandResult {
   const char* status = "not-connected";  // written / expired / write-failed / not-connected
   int bytes = 0;                     // HID return count; not a motor acknowledgement
   std::array<uint8_t, 64> report{};
+  int opticalMode = -1;               // >= 0: a light-mode (optical sub-protocol) command
 };
 
 struct UsbTransportOptions {
@@ -72,6 +75,7 @@ class ReportDecoder {
     uint64_t generation = 0;
     std::unique_ptr<ImuReportParser> imu;
     std::unique_ptr<OpticalReportParser> optical;
+    std::unique_ptr<ButtonsReportParser> buttons;  // EndpointKind::Buttons
     std::unique_ptr<WirelessReportParser> wireless;
   };
   void ResetWireless(Ep& ep);
@@ -104,11 +108,30 @@ class UsbTransport {
   // ("" if none). Any thread.
   struct Receiver { std::string serial, connected; uint16_t pid = 0; };
   std::vector<Receiver> Receivers() const;
+  // The device a receiver was carrying has gone (wireless dropout, powered off). Until this
+  // existed, `receivers_[dongle].connected` kept the old serial: SteamVR kept showing the
+  // dongle as occupied, its pairing page insisted a controller was still connected, and the
+  // only way to pair another was to unplug the receiver.
+  void OnDeviceGone(const DeviceId& serial);
   // Puts a receiver into pairing mode for `milliseconds` (0: leaves pairing mode), as
   // stock 0x3ce9e0 / 0x3cea40: feature 0xff "ad 03 <on> <ms u16>". A receiver that has a
   // device is reopened afterwards (its device is replaced). Any thread; false if no such
   // receiver is plugged in.
   bool SetPairing(const std::string& receiver, int milliseconds);
+
+  // The receiver with Bluetooth, for SteamVR's base station power management
+  // (radio_mode.hpp). Any thread. The two below wait for the HID threads to run the command
+  // (at most a couple of seconds, if the receiver goes away): not for tight loops.
+  bool HasBluetoothReceiver() const;
+  // Switches its radio; on: checks that it took, and goes back to Valve's mode if it didn't
+  // (stock 0x2cb80). False if there is no such receiver or it failed.
+  bool SetBluetoothRadio(bool on);
+  // Whether its radio is in Bluetooth mode; nullopt if there is none or it didn't answer.
+  std::optional<bool> BluetoothRadioOn();
+
+  // The radio serial of the device connected to an open receiver (dongle), 0 if none, or
+  // nullopt if it didn't answer. A short query, for the watchdog (watchdog.cpp).
+  static std::optional<uint32_t> ConnectedSerial(hid_device_* receiver);
 
   // Loads a cached SteamVR config for a serial ("LHR-0704E07A"), or "".
   static std::string LoadSteamConfig(const std::string& dir, const std::string& serial);
@@ -124,6 +147,7 @@ class UsbTransport {
     std::string receiver;  // dongle serial for wireless devices
     int sensorType = -1;   // hardware id low byte (report 0x05), -1 unknown
     std::string path;      // hidapi path, unique while plugged in
+    bool bluetooth = false;  // receiver's radio in Bluetooth mode: no device can connect
   };
   enum class OpenResult { Failed, Idle, Ready };
   // Opens and sets up one enumerated HID interface (Start and hotplug).
@@ -146,7 +170,6 @@ class UsbTransport {
 #if defined(__GNUC__) || defined(__clang__)
   void Log(LogLevel level, const char* format, ...) __attribute__((format(printf, 3, 4)));
 #else
-  // MSVC has no printf-format attribute; its own format warnings cover the same ground.
   void Log(LogLevel level, const char* format, ...);
 #endif
   IInputSink* sink_;
@@ -183,6 +206,17 @@ class UsbTransport {
   std::vector<PairCommand> pairing_;  // under hapticMutex_; read by the reader and probe threads
   // Run a pending pairing command for `o`'s receiver; true if one was sent.
   bool TakePairing(Open& o);
+  // A radio command for the thread that owns the receiver. set: the mode to switch to, or
+  // nullopt to read it. result: the mode set or read, nullopt if that failed.
+  struct RadioCommand {
+    std::string receiver;
+    std::optional<RadioMode> set;
+    std::promise<std::optional<RadioMode>> result;
+  };
+  std::vector<std::shared_ptr<RadioCommand>> radioCommands_;  // under hapticMutex_
+  std::string BluetoothReceiver() const;
+  std::optional<RadioMode> RunRadioCommand(const std::string& receiver, std::optional<RadioMode> set);
+  void TakeRadioCommands(Open& o);  // runs the ones for `o`'s receiver, on its owner's thread
   // Configs read from the devices this session (serial -> JSON): a reconnect reuses it.
   std::mutex configMutex_;
   std::map<std::string, std::string> sessionConfigs_;

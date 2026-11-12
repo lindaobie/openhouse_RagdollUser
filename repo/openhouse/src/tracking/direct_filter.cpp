@@ -37,7 +37,7 @@ DirectFilter::DirectFilter() : P(Mat::Zero(kStateSize, kStateSize)), Q(Mat::Zero
 
 bool DirectFilter::CalibrationHealthy() const {
   for (int i = 18; i < 31; ++i) if (!std::isfinite(x[i])) return false;
-  if (std::abs(x[18] - 9.80665) > 0.49033249999999996 ||
+  if (std::abs(x[18] - 9.80665) > gravityTolerance ||
       x[28] * x[28] + x[29] * x[29] + x[30] * x[30] > 0.06853891945200943) return false;
   for (int i = 25; i < 28; ++i) if (x[i] <= 0) return false;
   if (P.rows() < 31 || P.cols() < 31 || !P.block(18, 18, 13, 13).allFinite()) return false;
@@ -118,42 +118,104 @@ void DirectFilter::Predict(double dtPos, double dtRot) {
   Jet xj[kStateSize], r[kStateSize];
   for (int i = 0; i < kStateSize; i++) xj[i] = Jet(x[i], i);
   StateTimestep(xj, dtPos, dtRot, r);
-  Mat F(n, n);
   for (int i = 0; i < kStateSize; i++) xLin[i] = r[i].a;
-  for (int i = 0; i < n; i++)
-    for (int j = 0; j < n; j++) F(i, j) = r[i].v[j];
-  Ppred = F * P.topLeftCorner(n, n) * F.transpose() + Q.topLeftCorner(n, n);
+  // Ppred = F P F^T + Q. F is the identity except in the rows of the states that move over a
+  // step (position, velocity, orientation: 10 of 31-49, with ~37 entries off the identity), so
+  // only those rows of F P and those columns of (F P) F^T are summed; the others are copies.
+  // The same products as the dense form up to summation order; the dense pair of 49x49 GEMMs
+  // per IMU sample was most of the driver's CPU time (#39, #50).
+  struct Row { int i; int count; int j[kStateSize]; double v[kStateSize]; };
+  Row rows[kStateSize];
+  int moving = 0;
+  for (int i = 0; i < n; i++) {
+    Row& row = rows[moving];
+    row.i = i;
+    row.count = 0;
+    bool identity = true;
+    for (int j = 0; j < n; j++) {
+      const double f = r[i].v[j];
+      if (f != (i == j ? 1.0 : 0.0)) identity = false;
+      if (f != 0.0) { row.j[row.count] = j; row.v[row.count] = f; ++row.count; }
+    }
+    if (!identity) ++moving;
+  }
+  const auto Pn = P.topLeftCorner(n, n);
+  Mat A = Pn;  // F P
+  for (int k = 0; k < moving; k++) {
+    const Row& row = rows[k];
+    A.row(row.i).setZero();
+    for (int t = 0; t < row.count; t++) A.row(row.i).noalias() += row.v[t] * Pn.row(row.j[t]);
+  }
+  Ppred = A;  // (F P) F^T
+  for (int k = 0; k < moving; k++) {
+    const Row& row = rows[k];
+    Ppred.col(row.i).setZero();
+    for (int t = 0; t < row.count; t++) Ppred.col(row.i).noalias() += row.v[t] * A.col(row.j[t]);
+  }
+  Ppred += Q.topLeftCorner(n, n);
 }
 
-bool DirectFilter::RejectCorrection(const Vec& dx) const {
+bool DirectFilter::RejectCorrection(const Vec& dx) {
+  // Same limits, same order of test: only the reason is recorded (see RejectReason).
+  const auto refuse = [this](int reason) {
+    lastRejectReason = reason;
+    lastRejectSlot = -1;
+    lastRejectOver = lastRejectLimit = 0;
+    return true;
+  };
+  // A scalar limit (IMU rotation, gravity, angular rate): record the value and the limit
+  // it was compared against, not just which one it was. The alternate-base limits below
+  // already did this; without it for these, a log cannot tell a correction that is 2.1
+  // deg over a 2 deg converged limit (a threshold question) from a 30 deg one (a
+  // calibration question), which is exactly the ambiguity the diagnostic exists to end.
+  const auto refuseValue = [this](int reason, double over, double limit) {
+    lastRejectReason = reason;
+    lastRejectSlot = -1;
+    lastRejectOver = over;
+    lastRejectLimit = limit;
+    return true;
+  };
+  // An alternate base's limit: record which base slot tripped it and by how much.
+  const auto refuseAlt = [this](int reason, int slot, double over, double limit) {
+    lastRejectReason = reason;
+    lastRejectSlot = slot;
+    lastRejectOver = over;
+    lastRejectLimit = limit;
+    return true;
+  };
   for (int i = 0; i < dx.size(); i++)
-    if (std::isnan(dx[i] - dx[i])) return true;
+    if (std::isnan(dx[i] - dx[i])) return refuse(kRejectNaN);
   auto d = [&](int i) { return i < dx.size() ? dx[i] : 0.0; };
   const double rot = std::sqrt(d(30) * d(30) + d(28) * d(28) + d(29) * d(29));
-  if (kMaxImuRot < rot) return true;
+  if (kMaxImuRot < rot) return refuseValue(kRejectImuRot, rot, kMaxImuRot);
   bool skipTilt = false;
   if (updateCount < 0x105) {
-    if (kMaxGravMag < std::fabs(d(18))) return true;
+    const double g = std::fabs(d(18));
+    if (kMaxGravMag < g) return refuseValue(kRejectGravMag, g, kMaxGravMag);
     if (updateCount < 0xc9) skipTilt = true;
   } else {
-    if (kMaxImuRotConverged < rot) return true;
+    if (kMaxImuRotConverged < rot) return refuseValue(kRejectImuRot, rot, kMaxImuRotConverged);
     const double g = std::fabs(d(18));
-    if (kMaxGravMag < g) return true;
-    if (kMaxGravMagConverged < g) return true;
+    if (kMaxGravMag < g) return refuseValue(kRejectGravMag, g, kMaxGravMag);
+    if (kMaxGravMagConverged < g) return refuseValue(kRejectGravMag, g, kMaxGravMagConverged);
   }
-  if (!skipTilt && kMaxGravTilt < std::sqrt(d(16) * d(16) + d(17) * d(17))) {
-    return true;
-  }
+  const double tilt = std::sqrt(d(16) * d(16) + d(17) * d(17));
+  if (!skipTilt && kMaxGravTilt < tilt) return refuseValue(kRejectGravTilt, tilt, kMaxGravTilt);
   const double w2 = d(13) * d(13) + d(14) * d(14) + d(15) * d(15);
-  if (omegaCorrectionLimit2 <= w2) return true;
+  if (omegaCorrectionLimit2 <= w2) return refuseValue(kRejectOmega, std::sqrt(w2), std::sqrt(omegaCorrectionLimit2));
   for (int s = 0; s < 3; s++) {
     if (!altBaseActive[s]) continue;
     const int k = kAltBaseIndex[s];
     const double trans = std::sqrt(d(k + 2) * d(k + 2) + d(k) * d(k) + d(k + 1) * d(k + 1));
-    if (kMaxAltBaseTrans < trans) return true;
+    if (kMaxAltBaseTrans < trans) return refuseAlt(kRejectAltBaseTrans, s, trans, kMaxAltBaseTrans);
     const double rotAlt = std::sqrt(d(k + 5) * d(k + 5) + d(k + 3) * d(k + 3) + d(k + 4) * d(k + 4));
-    if (kMaxAltBaseRot < rotAlt) return true;
+    if (kMaxAltBaseRot < rotAlt) return refuseAlt(kRejectAltBaseRot, s, rotAlt, kMaxAltBaseRot);
   }
+  // A frame that passes must leave no diagnostic behind: a stale slot or limit from the
+  // previous refusal would be read as belonging to this frame.
+  lastRejectReason = kRejectNone;
+  lastRejectSlot = -1;
+  lastRejectOver = lastRejectLimit = 0;
   return false;
 }
 
@@ -217,10 +279,11 @@ bool DirectFilter::Update(const std::vector<Residual>& res, const Mat& R, const 
     // sensor 0.24 rad off moved it 43 cm, 1 m within 0.3 s). Frames of fewer than three
     // sensor rows are rejected. (A chi-square gate doesn't tell them apart: the
     // predicted spread is far too small in violent motion, median 71 per row.)
-    const int optical = m - (res.empty() ? 0 : res.back().m);
-    if (optical < 3) {
+    if (opticalRows < 3) {
       flags |= 0x200;
       rejectCount++;
+      lastRejectReason = kRejectFewRows;
+      lastRejectRows = opticalRows;
       return false;
     }
   }
@@ -256,6 +319,7 @@ bool DirectFilter::Update(const std::vector<Residual>& res, const Mat& R, const 
   if (RejectCorrection(dx)) {
     flags |= 0x200;
     rejectCount++;
+    lastRejectRows = opticalRows;
     return false;
   }
   // Not stock: one frame that disagrees with the prediction as a whole and would throw the
@@ -265,7 +329,12 @@ bool DirectFilter::Update(const std::vector<Residual>& res, const Mat& R, const 
   // the wrong track out of the room. No single frame, a few ms after the last, moves a
   // device 10 cm. Gating on sigma instead (> 100) also dropped good light from still
   // devices, whose predicted spread is tiny (vrchat-01: coasting 4.9 -> 10 %).
-  // Never more than a few in a row: if it is the filter that's wrong, the light must win.
+  // No cap on how many in a row: if it is the filter that's wrong, DeviceTracker's refused-
+  // light reset reacquires after 0.5 s of light that fits nothing. (A cap of 6 frames was
+  // written here but never acted: the IMU samples between frames, which share this Update,
+  // reset its count. Making it act, either applying the 7th frame or reacquiring at once,
+  // was worse in the Beat Saber stand-ins - a 52 cm jump in one replay; fastmotion4/5 one
+  // more fly-away and 1 % less tracking - so the behaviour live-tested here is kept, #47.1.)
   // Nor while the filter is still settling (fewer than 200 updates since a bootstrap or
   // reacquire): its large corrections then are the right ones (all 322 frames this gate
   // took from vrchat-01's 100-200 s were there). It acts in violent motion too, where
@@ -275,16 +344,16 @@ bool DirectFilter::Update(const std::vector<Residual>& res, const Mat& R, const 
   // 2026-10-22 (no fly-aways).
   if (gate && !frameGateOff && gateSigma > 0 && updateCount >= 200 && opticalRows > 0 &&
       2 * lastOutliers > opticalRows &&
-      dx.size() >= 3 && dx.head<3>().norm() > kFrameRejectMove && frameRejectRun < kMaxFrameRejectRun) {
-    ++frameRejectRun;
+      dx.size() >= 3 && dx.head<3>().norm() > kFrameRejectMove) {
     ++rejectedFrames;
     return false;
   }
-  frameRejectRun = 0;
   for (int i = 0; i < kStateSize; i++) x[i] = xLin[i] + (i < n ? dx[i] : 0.0);
   const double inv = 1.0 / std::sqrt(x[12] * x[12] + x[9] * x[9] + x[10] * x[10] + x[11] * x[11]);
   for (int i = 9; i < 13; i++) x[i] *= inv;
   if (walked) { P.topLeftCorner(n, n) = Ppred; return true; }
+  // The dense Joseph form stays: expanding or regrouping it (n^2 m instead of n^3, another 25 %
+  // of replay CPU) cost testswing ~1.4 % tracking in fresh rooms, losing its numerical care.
   const Mat IKH = Mat::Identity(n, n) - K * H;
   P.topLeftCorner(n, n) = IKH * Ppred * IKH.transpose() + K * Rk * K.transpose();
   return true;

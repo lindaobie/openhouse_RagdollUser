@@ -30,6 +30,12 @@
                 "show_without_hmd": true
             },
             {
+                "name": "/settings/driver_openhouse/hideLostDevices",
+                "control": "toggle",
+                "label": "Hide lost controllers and trackers (instead of keeping them where they were last seen)",
+                "show_without_hmd": true
+            },
+            {
                 "name": "/settings/driver_openhouse/record",
                 "control": "toggle",
                 "label": "Record Session (disable to save)",
@@ -39,6 +45,30 @@
                 "name": "/settings/driver_openhouse/resetRoom",
                 "control": "toggle",
                 "label": "Reset room (relearns every base station)",
+                "show_without_hmd": true
+            },
+            {
+                "name": "/settings/driver_openhouse/mixedLight",
+                "control": "toggle",
+                "label": "Enable Mixed Basestations (1.0 and 2.0 together, EXPERIMENTAL, might change the room map)",
+                "show_without_hmd": true
+            },
+            {
+                "name": "/settings/driver_openhouse/mixedLightControllers",
+                "control": "toggle",
+                "label": "Mixed Basestations: controllers use both kinds",
+                "show_without_hmd": true
+            },
+            {
+                "name": "/settings/driver_openhouse/mixedLightTrackers",
+                "control": "toggle",
+                "label": "Mixed Basestations: trackers use both kinds",
+                "show_without_hmd": true
+            },
+            {
+                "name": "/settings/driver_openhouse/mixedLightScout",
+                "control": "toggle",
+                "label": "Mixed Basestations: headset times the 2.0 stations (fewer blips)",
                 "show_without_hmd": true
             }
         ]

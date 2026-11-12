@@ -63,4 +63,5 @@ other mode. In LH1 mode 2.0 bases give stray pulses without sync flashes; in LH2
   low for > 1 % of its tracking time in `-171923Z-81871`).
 * Live test of the light-mode switching (LH1 room: must stay LH1; LH2 room: must switch).
 * Not handled: generation (bit 27) changes beyond a channel reset, channel conflicts
-  (event 0xe), mixed LH1/LH2 rooms (a device reports one mode at a time), Tundra trackers.
+  (event 0xe), Tundra trackers. Mixed LH1/LH2 rooms (a device reports one mode at a time):
+  behind a switch, `mixed_stations.md`.

@@ -92,7 +92,7 @@ struct Problem {
       const double r = Wrap(h[size_t(i)] - z[size_t(i)]);
       c = r * r + c;
     }
-    return c;
+    return detail::LineSearchCostOrPenalty(c, alpha);
   }
 };
 
@@ -135,6 +135,16 @@ bool NonCoplanar(const TrackedObjectModel& obj, const std::vector<int>& channels
 }
 
 }  // namespace
+
+namespace detail {
+double LineSearchCostOrPenalty(double cost, double alpha) {
+  // A non-finite LH2 residual is outside the model domain, not an inexpensive
+  // trial. Give it the same ordered penalty as a pose behind the base. Otherwise
+  // fa <= fb and fa < fb are both false for NaN, and the line search walks toward
+  // the invalid side until the whole pose becomes NaN (issue #47, finding 3).
+  return std::isfinite(cost) ? cost : (alpha + 1.0) * kBehindPenalty;
+}
+}  // namespace detail
 
 bool SamplesSufficient(const TrackedObjectModel& obj, const std::vector<OpticalSample>& s) {
   // 0x3a2e30 / 0x3a3370

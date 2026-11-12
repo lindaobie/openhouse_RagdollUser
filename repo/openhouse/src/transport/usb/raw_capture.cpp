@@ -84,7 +84,7 @@ bool RawCaptureReader::ReadAll(const std::function<void(const EndpointInfo&)>& o
       if (!(R(f_, e.ep) && R(f_, e.vid) && R(f_, e.pid) && R(f_, e.iface) && R(f_, kind) && RS(f_, e.serial) &&
             R(f_, e.gyroRange) && R(f_, e.accelRange) && RS(f_, e.configJson)))
         return false;
-      if (kind > uint8_t(EndpointKind::Wireless) || e.gyroRange < -1 || e.gyroRange > 3 ||
+      if (kind > uint8_t(EndpointKind::Buttons) || e.gyroRange < -1 || e.gyroRange > 3 ||
           e.accelRange < -1 || e.accelRange > 3) return false;
       e.kind = EndpointKind(kind);
       onEndpoint(e);

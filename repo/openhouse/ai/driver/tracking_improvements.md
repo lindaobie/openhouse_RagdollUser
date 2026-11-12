@@ -126,6 +126,24 @@ of 2154 device-seconds; not worth building yet.
   twice running, relearns the base (20 cm prior, re-placed on the first solve under
   2 cm). Recalled (cached) frames are ignored. Stock bases send it once at power-up, so
   for them only the solves and the devices' own filters notice.
+* Locked bases (`RoomMap::Locked`: 100+ keyframes and within 20 mm) used to move only on
+  an accelerometer bump, so a nudge under 1.2 deg was never corrected (GitHub #4: every
+  device jumping in turn between two poses). `Session::LightMovedLockedBase` treats a
+  locked base as knocked (`RoomMap::Bump`, relearned from fresh keyframes) when, 3
+  solves running (5 for one device whose keyframes span < 10 s):
+  * the solve places it off by max(15 mm, 1 % of its distance) or 0.75 deg, beyond
+    4 sigma; or
+  * the fit rejects at least a quarter of the keyframes that see it (15+) while
+    rejecting under a tenth of the others. This is what a nudge shows first: the fit
+    keeps the old pose by rejecting every new keyframe (nudge-01, ch3 tapped, turned and
+    moved: rejections 1 -> 85, the solve moving 2 mm; flagged at 40 s, re-placed 10.6 mm
+    / 9.15 deg at 44 s, rejections back to 1-5). `SolvedBase::seen/rejected` carry it,
+    and a base whose keyframes were all rejected is still reported at its room pose.
+  One light relearn per base a minute. On vrchat-01 / qls-post / ms4-01 / fastmotion /
+  testswing (learned room, then replayed against it) the rejection rule never fired;
+  the distance rule fired once per vrchat-01 pass, on a 5 m base the learned room had
+  locked 172 mm off. Open: a moved unlocked base drops all its keyframes, not only
+  older ones; a relearn that never gets under 2 cm has no timeout.
 * The origin can't move in the room (it is the gauge): when it is knocked, or two other
   bases are off together, it is re-solved against the best other base, and the host
   frame re-anchors on the room's epoch so the world stays put.
@@ -141,6 +159,17 @@ of 2154 device-seconds; not worth building yet.
 Not effective on this data: per-row innovation gating of optical updates
 (`DirectFilter::gateSigma`, 4 sigma) changed nothing measurable; it is kept as a cheap
 safety net.
+
+## Output stage (`DeviceTracker::UpdateOutput`)
+
+From a GitHub patch (Pimax Dream Air, seated): the stillness hold is off for headsets
+(`SetHoldStill`, a still head froze the view, then caught up 0.1-0.65 deg), and near
+still every unexplained step glides (thresholds ramp from 10 um / 5 urad under
+0.05 m/s / 0.15 rad/s back to 2 mm / 0.5 deg by 0.3 m/s / 1 rad/s; the expected motion
+uses the mean of both velocities). The gravity state may sit 10 % from 9.80665 with the
+improvements (stock 5 %, `DirectFilter::gravityTolerance`): a controller reading 5 % low
+reset every time (#14). Reacquires back off (0.5 s doubling to 8 s, 2 s minimum on the
+same base, cleared after 10 s quiet; PR #9).
 
 ## The host frame
 
@@ -162,6 +191,14 @@ stock driver), such tools use the runtime's base station devices.
 On session-ms-01 the room settles about 27 s in, from the stored room as from none. Then
 the solver still moves the second base about 3 cm over 20 s (a second epoch at 45 s):
 the room solver is the next thing to steady.
+
+## 1.0 and 2.0 stations together (`PulseSorter`, `runtime/mixed_light.hpp`)
+
+Off by default, a SteamVR switch: devices in LH1 mode, where they see both kinds, with each 2.0
+station's hits picked out of the LH1 pulses and sent down the LH2 path, the pose helping to decide;
+visits to LH2 mode to time the rotors again; light in LH1 mode weighted by how much it scatters
+(`LighthouseDirect::SetMixedLightScatter`, the only change to what the filter does, 0 unless in use). Off,
+replays are byte for byte as before. `mixed_stations.md` has the design and the numbers.
 
 ## A/B switches (environment)
 
@@ -310,3 +347,36 @@ fastmotion5 5 -> 0 (coasting ~5 -> 0.6 %); fastmotionindex in the room: no losse
 > 5 cm in 32 s; fresh-room jumps > 5 cm: fastmotionindex 92 -> 28, spin-01 258 -> 57;
 vrchat-01 > 5 cm 5 -> 3; ms4-01 and the LH2 sessions unchanged. Cost: testswing valid
 37 -> 29 % (drops out instead of tracking a wrong pose; fewer jumps).
+
+## Pose solver: non-finite LH2 trial costs cannot steer the line search (2026-11-10)
+
+The bootstrap solver's golden-section line search compared trial costs directly. An
+LH2 sensor outside the plane model's angular domain produces NaN. With `fb` NaN and
+`fa` finite, both `fa <= fb` and `fa < fb` are false, so the search moved toward the
+invalid side; subsequent trials stayed NaN and the pose was lost (issue #47, finding 3).
+
+* **Fix**: `detail::LineSearchCostOrPenalty` leaves finite costs unchanged and maps any
+  non-finite result to the same ordered, finite penalty already used for a pose behind
+  the base. The shorter valid step is therefore preferred instead of walking into NaN.
+* **Verification**: `PoseSolver.NonFiniteLineSearchCostBecomesAnOrderedBehindPenalty`
+  covers finite, NaN and infinity inputs and checks that the penalty increases with the
+  trial distance. Restoring the old `return cost` behaviour makes the test fail with
+  NaN comparisons; restoring the fix passes it. Full `lh_unit_tests`: 30 passed, 1
+  skipped (the pre-existing Linux `/dev/full` test). This pins the cost rule; it does
+  not claim a measured acquisition-rate improvement on hardware.
+
+## Output: losing a track also drops its held pose (2026-11-10)
+
+A still controller or tracker can hold its output pose. `UpdateOutput` returned early
+when `RawOutput` was invalid but left `heldPose_` intact. If the device was moved while
+lost and then reacquired on a base the room had not located yet, the first valid output
+could reuse the old resting place until the device moved again (issue #47, finding 4).
+
+* **Fix**: clear `heldPose_` on the invalid-output path, alongside the other smoothing
+  state. The deliberate primary-switch grace period still holds its coasting pose; only
+  an actually invalid raw output clears the held track.
+* **Verification**: `DeviceTrackerOutput.InvalidTrackingClearsAHeldPose` injects a held
+  pose through the existing runtime test access, runs the real invalid-output path and
+  requires the hold to be gone. Commenting out the reset makes the test fail with the
+  old held pose still present; the restored fix passes it. Full runtime suite: 25/25
+  passed. Full unit suite: 30 passed, 1 skipped. No live hardware improvement is claimed.

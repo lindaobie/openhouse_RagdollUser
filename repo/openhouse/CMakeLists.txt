@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(liblighthouse VERSION 1.0.0 LANGUAGES CXX)
+project(liblighthouse VERSION 1.0.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,8 @@ if(MSVC)
   add_compile_definitions(_USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS)
 else()
   add_compile_options(-Wall -Wextra -Wno-unused-parameter)
+  # Release binaries name no path on the builder's machine (__FILE__ in messages).
+  add_compile_options(-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/=)
 endif()
 if(WIN32)
   add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -38,6 +40,10 @@ option(LH_BUILD_TESTS "Build tests" ON)
 option(LH_BUILD_ORACLE_TESTS "Build tests that dlopen the original driver_lighthouse.so" ON)
 
 include(GNUInstallDirs)
+if(WIN32)
+  enable_language(RC)
+endif()
+include(cmake/windows/lh_windows_resources.cmake)
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(Ceres REQUIRED)
 find_package(nlohmann_json REQUIRED)
@@ -76,6 +82,7 @@ add_library(lh_tracking
   src/tracking/tracked_object.cpp
   src/tracking/pose_solver.cpp
   src/tracking/tracking_source.cpp
+  src/tracking/pulse_sorter.cpp
   src/tracking/sample_history.cpp
   src/tracking/lighthouse_direct.cpp
   src/tracking/tracker.cpp
@@ -96,6 +103,10 @@ if(LH_BUILD_USB)
   if(WIN32)
     find_package(hidapi CONFIG REQUIRED)
     set(LH_HIDAPI_TARGET hidapi::hidapi)
+  elseif(APPLE)
+    find_package(hidapi CONFIG REQUIRED)
+    set(LH_HIDAPI_TARGET hidapi::hidapi)
+    find_path(HIDAPI_PARENT_DIR NAMES "hidapi/hidapi.h")
   else()
     # hidapi's hidraw backend, built in with hidden symbols (third_party/hidapi/README.md):
     # a host's own hidapi (monado-service: libusb backend) must not replace it.
@@ -123,6 +134,7 @@ if(LH_BUILD_USB)
   target_include_directories(lh_usb PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/transport/usb>
+    $<$<BOOL:${HIDAPI_PARENT_DIR}>:$<BUILD_INTERFACE:${HIDAPI_PARENT_DIR}>>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
   target_include_directories(lh_usb PRIVATE src)
   target_link_libraries(lh_usb PUBLIC lh_common ${LH_HIDAPI_TARGET} Threads::Threads ZLIB::ZLIB)
@@ -137,7 +149,23 @@ if(LH_BUILD_USB)
     add_executable(lhtool apps/lhtool/main.cpp)
     target_link_libraries(lhtool PRIVATE lh_usb lh_tracking lh)
     # Started by SteamVR each session: warns when an update replaced our driver.
+    if(WIN32)
+      # Replaces the .bat + PowerShell installer (Defender flagged that pattern).
+      add_executable(openhouse-installer apps/openhouse-installer/main.cpp)
+      target_link_libraries(openhouse-installer PRIVATE nlohmann_json::nlohmann_json)
+      if(NOT MSVC)  # MSVC starts wmain by itself
+        target_compile_options(openhouse-installer PRIVATE -municode)
+        target_link_options(openhouse-installer PRIVATE -municode)
+      endif()
+    endif()
     add_executable(openhouse-check WIN32 apps/openhouse-check/main.cpp)
+    target_include_directories(openhouse-check PRIVATE include)
+    if(WIN32)
+      target_link_libraries(openhouse-check PRIVATE winhttp)
+    endif()
+    if(MSVC)
+      target_link_options(openhouse-check PRIVATE /ENTRY:mainCRTStartup)  # a GUI app with main()
+    endif()
     add_executable(lhcapture apps/lhcapture/main.cpp)
     target_include_directories(lhcapture PRIVATE src)
     target_link_libraries(lhcapture PRIVATE lh_usb nlohmann_json::nlohmann_json)
@@ -147,6 +175,7 @@ endif()
 
 # ---- liblh: the session runtime (shared room map, devices, input) -------------
 add_library(lh_runtime OBJECT
+  src/runtime/mixed_light.cpp
   src/runtime/room_map.cpp
   src/runtime/index_input.cpp
   src/runtime/device_tracker.cpp
@@ -188,10 +217,14 @@ endif()
 option(LH_BUILD_OPENVR_DRIVER "Build the drop-in driver_lighthouse.so" ON)
 find_path(OPENVR_INCLUDE_DIR openvr_driver.h PATH_SUFFIXES openvr)
 if(LH_BUILD_OPENVR_DRIVER AND LH_BUILD_USB AND OPENVR_INCLUDE_DIR)
-  add_library(driver_lighthouse MODULE src/openvr/driver_lighthouse.cpp src/openvr/hand_skeleton.cpp src/openvr/raw_alignment.cpp src/openvr/room_publisher.cpp src/openvr/host_frame.cpp src/openvr/stock_hmd.cpp src/openvr/pairing_mailbox.cpp src/openvr/telemetry_server.cpp $<TARGET_OBJECTS:lh_runtime>)
+  add_library(driver_lighthouse MODULE src/openvr/driver_lighthouse.cpp src/openvr/hand_skeleton.cpp src/openvr/raw_alignment.cpp src/openvr/room_publisher.cpp src/openvr/host_frame.cpp src/openvr/stock_hmd.cpp src/openvr/pairing_mailbox.cpp src/openvr/telemetry_server.cpp src/openvr/watchdog.cpp $<TARGET_OBJECTS:lh_runtime>)
   if(WIN32)
     target_link_libraries(driver_lighthouse PRIVATE setupapi hid)  # stock_hmd: hiding devices from the stock DLL
+    # HmdDriverFactory and our hidapi, for drivers that hook HID access (the .def says why).
+    target_sources(driver_lighthouse PRIVATE src/openvr/driver_lighthouse.def)
     set(LH_OPENVR_PLATFORM win64)
+  elseif(APPLE)
+    set(LH_OPENVR_PLATFORM osx)
   else()
     set(LH_OPENVR_PLATFORM linux64)
   endif()
@@ -202,7 +235,7 @@ if(LH_BUILD_OPENVR_DRIVER AND LH_BUILD_USB AND OPENVR_INCLUDE_DIR)
   target_link_libraries(driver_lighthouse PRIVATE lh_report lh_tracking lh_usb Ceres::ceres Eigen3::Eigen nlohmann_json::nlohmann_json)
   find_package(Python3 COMPONENTS Interpreter QUIET)
   find_program(PATCHELF_EXECUTABLE patchelf)
-  if(NOT WIN32 AND Python3_Interpreter_FOUND AND PATCHELF_EXECUTABLE)
+  if(NOT WIN32 AND NOT APPLE AND Python3_Interpreter_FOUND AND PATCHELF_EXECUTABLE)
     add_custom_target(driver_package
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/package-driver.py
         $<TARGET_FILE:driver_lighthouse> ${CMAKE_BINARY_DIR}/driver-package
@@ -210,7 +243,7 @@ if(LH_BUILD_OPENVR_DRIVER AND LH_BUILD_USB AND OPENVR_INCLUDE_DIR)
       COMMENT "Bundling driver dependencies for Steam Runtime")
   endif()
   # Only HmdDriverFactory is exported, so nothing clashes with the host process.
-  if(NOT WIN32)
+  if(NOT WIN32 AND NOT APPLE)
     target_link_options(driver_lighthouse PRIVATE
       -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/openvr/exports.map -Wl,--no-undefined)
   endif()
@@ -223,8 +256,26 @@ install(TARGETS lh EXPORT lighthouseTargets LIBRARY DESTINATION ${CMAKE_INSTALL_
 # ---- lhviz: 3D visualizer on top of liblh ---------------------------------------
 if(LH_BUILD_VIEWER)
   find_package(glfw3 QUIET)
+  # Some distributions ship GLFW without its CMake package (only glfw3.pc): find it there.
+  if(NOT TARGET glfw)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+      pkg_check_modules(LH_GLFW QUIET IMPORTED_TARGET glfw3)
+      if(LH_GLFW_FOUND)
+        add_library(glfw INTERFACE IMPORTED)
+        target_link_libraries(glfw INTERFACE PkgConfig::LH_GLFW)
+      endif()
+    endif()
+  endif()
   find_package(OpenGL QUIET)
-  if(TARGET glfw AND OpenGL_FOUND)
+  if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/imgui.cpp)
+    set(LH_VIEWER_MISSING "Dear ImGui (third_party/imgui is missing from the source tree)")
+  elseif(NOT TARGET glfw)
+    set(LH_VIEWER_MISSING "GLFW 3 (install its development package, e.g. glfw-devel / libglfw3-dev / glfw)")
+  elseif(NOT OpenGL_FOUND)
+    set(LH_VIEWER_MISSING "OpenGL (install its development package, e.g. mesa-libGL-devel / libgl-dev)")
+  endif()
+  if(NOT LH_VIEWER_MISSING)
     add_library(lh_imgui STATIC
       third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp third_party/imgui/imgui_tables.cpp
       third_party/imgui/imgui_widgets.cpp third_party/imgui/backends/imgui_impl_glfw.cpp
@@ -249,7 +300,8 @@ if(LH_BUILD_VIEWER)
       install(TARGETS openhouse-compare RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     endif()
   else()
-    message(STATUS "GLFW/OpenGL not found: skipping lhviz")
+    message(WARNING "LH_BUILD_VIEWER is on, but ${LH_VIEWER_MISSING} wasn't found: lhviz, openhouse-viewer "
+                    "and openhouse-compare are not built. Install it, or configure with -DLH_BUILD_VIEWER=OFF.")
   endif()
 endif()
 
@@ -261,7 +313,12 @@ if(LH_BUILD_TESTS)
     tests/unit/test_platform.cpp
     tests/unit/test_tracking_source.cpp
     tests/unit/test_pose_solver.cpp
-    tests/unit/test_tracker.cpp)
+    tests/unit/test_tracker.cpp
+    tests/unit/test_direct_filter.cpp
+    tests/unit/test_disambiguator_sob.cpp
+    tests/unit/test_pulse_sorter.cpp
+    tests/unit/test_mixed_light.cpp
+    src/runtime/mixed_light.cpp)
   target_include_directories(lh_unit_tests PRIVATE src)
   target_link_libraries(lh_unit_tests PRIVATE lh_tracking GTest::gtest_main)
   if(WIN32)
@@ -269,7 +326,7 @@ if(LH_BUILD_TESTS)
   endif()
   if(LH_BUILD_USB)
     target_sources(lh_unit_tests PRIVATE tests/unit/test_report_parser.cpp tests/unit/test_device_config.cpp
-      tests/unit/test_raw_capture.cpp)
+      tests/unit/test_raw_capture.cpp tests/unit/test_radio_mode.cpp)
     target_link_libraries(lh_unit_tests PRIVATE lh_usb)
     add_executable(lh_replay_tests tests/integration/test_replay.cpp)
     target_compile_definitions(lh_replay_tests PRIVATE LH_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
@@ -314,7 +371,8 @@ if(LH_BUILD_TESTS)
     set_tests_properties(capture_no_overwrite PROPERTIES WILL_FAIL TRUE)
   endif()
 
-  if(LH_BUILD_ORACLE_TESTS AND NOT WIN32)
+  # Only with the stock driver they dlopen (git-ignored): a fresh clone aborted ctest (#55).
+  if(LH_BUILD_ORACLE_TESTS AND NOT WIN32 AND NOT APPLE AND EXISTS "${CMAKE_SOURCE_DIR}/driver_lighthouse.so")
     add_executable(lh_oracle_tests
       tests/oracle/oracle.cpp
       tests/oracle/test_lighthouse_model.cpp
@@ -341,6 +399,25 @@ if(LH_BUILD_TESTS)
 endif()
 
 # ---- standalone CMake package --------------------------------------------------
+# Version information in the Windows binaries.
+foreach(entry
+    "lh|openhouse tracking library"
+    "driver_lighthouse|openhouse SteamVR lighthouse driver"
+    "lhtool|openhouse replay and diagnostics tool"
+    "lhcapture|openhouse device recorder"
+    "openhouse-check|openhouse update check"
+    "openhouse-viewer|openhouse viewer"
+    "openhouse-compare|openhouse and SteamVR driver comparison"
+    "lhviz|openhouse developer viewer"
+    "openhouse-installer|openhouse driver installer")
+  string(REPLACE "|" ";" parts "${entry}")
+  list(GET parts 0 name)
+  list(GET parts 1 text)
+  if(TARGET ${name})
+    lh_windows_resources(${name} "${text}")
+  endif()
+endforeach()
+
 include(CMakePackageConfigHelpers)
 configure_package_config_file(cmake/lighthouseConfig.cmake.in
   ${CMAKE_CURRENT_BINARY_DIR}/lighthouseConfig.cmake

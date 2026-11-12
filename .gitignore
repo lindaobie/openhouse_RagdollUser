@@ -39,3 +39,7 @@
 
 # 11. 历史 dump 的任何一份拷贝（含序列号与激光标定）
 /packages/firmware/openhouse-basestation-firmware/backups*/
+
+# 12. 源码树的本地备份与多份驱动构建
+/repo/openhouse.bak*/
+/packages/driver/_builds/

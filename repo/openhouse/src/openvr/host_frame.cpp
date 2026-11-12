@@ -5,6 +5,8 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
+#include "platform/platform.hpp"
+
 namespace lh::openvr {
 namespace {
 Eigen::Isometry3d FromPose(const Pose& p) {
@@ -65,8 +67,17 @@ void HostFrame::Save() const {
     j["rooms"][room] = {{"base", a.base}, {"orientation", {q.w(), q.x(), q.y(), q.z()}}, {"position", {t.x(), t.y(), t.z()}}};
   }
   const std::string tmp = path_ + ".tmp";
-  { std::ofstream f(tmp); if (!f) return; f << j.dump(1); }
-  std::rename(tmp.c_str(), path_.c_str());
+  {
+    std::ofstream f(tmp);
+    f << j.dump(1);
+    f.close();
+    if (!f) return;
+  }
+  // std::rename doesn't replace an existing file on Windows: only the first save took (#43).
+  try {
+    lh::platform::ReplaceFile(tmp, path_);
+  } catch (const std::exception&) {
+  }
 }
 
 const Eigen::Isometry3d& HostFrame::Update(const SessionSnapshot& snapshot, double now) {

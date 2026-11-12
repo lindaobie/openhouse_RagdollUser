@@ -180,7 +180,7 @@ switches were removed for the release). Details and numbers are in `tracking_imp
 |---|---|
 | `~/.config/lh/roommap.json` | Rooms and base poses |
 | `~/.config/lh/hostframe.json` | Host frame anchors per room. Delete to re-anchor |
-| `~/.config/lh/settings.json` | `roles`, `controllers`, `disabledDevices` |
+| `~/.config/lh/settings.json` | `roles`, `controllers`, `disabledDevices`, `mixedLight` (SteamVR's page wins under vrserver) |
 | `~/.config/lh/viewer.json` | openhouse-viewer settings |
 
 Every environment variable is listed in the root `README.md`. For development: `LH_STOCK_FILTER`

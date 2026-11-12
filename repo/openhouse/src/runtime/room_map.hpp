@@ -74,8 +74,9 @@ class RoomMap {
   const RoomBase* Base(uint32_t serial) const;
   std::vector<RoomBase> Bases() const;
   bool Empty() const;
-  // Locked: placed well (100+ keyframes, this session or saved), and not bumped. Only
-  // the base's own accelerometer (a bump) unlocks it; the light never moves it again.
+  // Locked: placed well (100+ keyframes, this session or saved), and not bumped. Only a
+  // bump unlocks it: its accelerometer, or room solves that keep placing it elsewhere
+  // (Session::LightMovedLockedBase). A single device's filter never moves it.
   static bool Locked(const RoomBase& base);
   const Room* Active() const { return active_ < 0 ? nullptr : &rooms_[size_t(active_)]; }
   uint64_t Revision() const { return revision_; }
@@ -106,6 +107,7 @@ class RoomMap {
   // base (OriginGauge), so the room, and what devices report in it, stay put.
   void Bump(uint32_t serial, const std::string& why);
   bool OriginRelearning() const { return originRelearn_; }
+  uint64_t Bumps() const { return bumps_; }  // counts Bump calls: a solve started before one is stale
   uint32_t OriginGauge() const;  // the base held fixed meanwhile; 0 if none
   void ApplyOriginSolved(const Eigen::Isometry3d& worldFromOrigin, double positionVariance, int keyframes);
   uint64_t OriginEpoch() const { return originEpoch_; }  // bumps when the origin was re-placed
@@ -153,6 +155,7 @@ class RoomMap {
   struct AccelTrack { Eigen::Vector3d ref = Eigen::Vector3d::Zero(); bool has = false; int strikes = 0; };
   std::map<uint32_t, AccelTrack> accel_;  // this session
   bool originRelearn_ = false;
+  uint64_t bumps_ = 0;
   uint64_t originEpoch_ = 0;
 };
 

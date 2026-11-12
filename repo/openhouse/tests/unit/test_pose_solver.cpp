@@ -6,6 +6,7 @@
 #include <Eigen/Geometry>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace {
 
@@ -56,6 +57,19 @@ TEST(PoseSolver, ExactSyntheticPoseAndErrorDefinition) {
   EXPECT_LT(result.cost, 1e-20);
   const double range = std::hypot(result.pose.p[0], result.pose.p[1], result.pose.p[2]);
   EXPECT_DOUBLE_EQ(result.error, std::sqrt(range * result.cost));
+}
+
+TEST(PoseSolver, NonFiniteLineSearchCostBecomesAnOrderedBehindPenalty) {
+  using lh::solver::detail::LineSearchCostOrPenalty;
+  constexpr double kBehindPenalty = 1e50;
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+
+  EXPECT_DOUBLE_EQ(LineSearchCostOrPenalty(2.5, 0.4), 2.5);
+  EXPECT_DOUBLE_EQ(LineSearchCostOrPenalty(nan, 0.382), 1.382 * kBehindPenalty);
+  EXPECT_DOUBLE_EQ(LineSearchCostOrPenalty(inf, 0.5), 1.5 * kBehindPenalty);
+  EXPECT_TRUE(std::isfinite(LineSearchCostOrPenalty(nan, 0.618)));
+  EXPECT_GT(LineSearchCostOrPenalty(nan, 0.618), LineSearchCostOrPenalty(nan, 0.382));
 }
 
 TEST(PoseSolver, RejectsInsufficientInputBeforeOptimization) {

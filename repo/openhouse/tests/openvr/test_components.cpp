@@ -13,7 +13,7 @@
 #include <chrono>
 #include <nlohmann/json.hpp>
 #include <thread>
-#include <unistd.h>
+#include "platform/platform.hpp"
 #include "transport/usb/haptics.hpp"
 #include <cmath>
 #include <cstdlib>
@@ -210,7 +210,7 @@ TEST(Skeleton, ThumbFollowsWhatItTouchesSmoothly) {
 // base since moved: 40 deg off); our room is level (RoomMap::LevelOrigin). The host frame
 // keeps SteamVR's origin and yaw but comes out level.
 TEST(RawAlignment, TakesTheLevelFromOurRoomNotAStaleDatabase) {
-  const auto path = (std::filesystem::temp_directory_path() / ("lh-test-rawalign-" + std::to_string(::getpid()) + ".json")).string();
+  const auto path = (std::filesystem::temp_directory_path() / ("lh-test-rawalign-" + std::to_string(lh::platform::ProcessId()) + ".json")).string();
   {
     std::ofstream f(path);
     f << R"({"known_universes": [{"id": "77", "tilt": {"pitch": 0.698, "roll": 0.0},
@@ -244,7 +244,7 @@ TEST(RawAlignment, TakesTheLevelFromOurRoomNotAStaleDatabase) {
 // aligning that frame (some reset past a few degrees) see no move. Our room turning
 // inside (re-levelling) changes nothing in the host frame either.
 TEST(RawAlignment, KeepsSteamVRsFrameForSmallLevelDifferencesAndNeverDrifts) {
-  const auto path = (std::filesystem::temp_directory_path() / ("lh-test-rawalign2-" + std::to_string(::getpid()) + ".json")).string();
+  const auto path = (std::filesystem::temp_directory_path() / ("lh-test-rawalign2-" + std::to_string(lh::platform::ProcessId()) + ".json")).string();
   {
     std::ofstream f(path);
     f << R"({"known_universes": [{"id": "77", "tilt": {"pitch": 0.035, "roll": 0.0},
@@ -429,7 +429,7 @@ TEST(Skeleton, ThumbReleasesAndGlidesBetweenButtons) {
 
 TEST(Telemetry, ServesHelloBacklogStateAndLogsOnLoopback) {
   lh::openvr::TelemetryServer server;
-  const int port = 36840 + 100 + int(::getpid() % 500);
+  const int port = 36840 + 100 + int(lh::platform::ProcessId() % 500);
   std::string error;
   ASSERT_TRUE(server.Start(port, "test-host", &error)) << error;
   server.Log(1.0, lh::LogLevel::Warn, "LHR-1", "before the client");

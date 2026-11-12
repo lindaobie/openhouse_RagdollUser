@@ -20,8 +20,12 @@ struct OpticalSample {
   double angle = 0;      // radians, 2π · (pulse mid − sync) / (nextSync − sync)
   double width = 0;      // seconds
   uint32_t flags = 0;
-  uint32_t flags2 = 0;
+  uint32_t flags2 = 0;   // kSampleSorted
 };
+
+// flags2 (not stock): a 2.0 station's hit picked out of LH1 pulses (tracking/pulse_sorter.hpp),
+// in a room with both kinds of base station. Its timing scatters more than an LH2 sensor word's.
+constexpr uint32_t kSampleSorted = 1u << 0;
 
 struct OpticalFrame {
   uint32_t baseSerial = 0;   // OOTX id (0 until the base's OOTX has been decoded)

@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -266,6 +267,113 @@ void* HookImport(HMODULE module, const char* dll, const char* name, void* hook) 
   return nullptr;
 }
 
+// The stock DLL carries hidapi and exports it (hid_open_path, hid_get_feature_report...),
+// and drivers that rewrite a headset's config as it is read (CustomHeadsetOpenVR for Pimax,
+// #32) detour those exports in "driver_lighthouse.dll". Here that module is ours and the
+// stock code is "driver_lighthouse.dll.stock", so they hook ours and the stock driver read
+// the raw config: no display. Each exported hid_* of the stock DLL is patched to jump to
+// ours, so every HID call it makes (internal ones too: the patch is at the function's entry)
+// goes through our exports and whatever hooks them. hid_device handles then are ours on
+// both sides. All or none: a mix would pass one hidapi's handle to the other.
+hid_device_info* StockEnumerate(unsigned short vid, unsigned short pid) {
+  hid_device_info* list = hid_enumerate(vid, pid);
+  if (std::getenv("LH_STOCK_ALL_DEVICES")) return list;
+  hid_device_info* hidden = nullptr;
+  for (hid_device_info** at = &list; *at;) {
+    hid_device_info* d = *at;
+    if (!d->path || StockMayUse(d->path)) {
+      at = &d->next;
+      continue;
+    }
+    LogHidden(d->path);
+    *at = d->next;  // unlinked from what the stock driver sees, freed here
+    d->next = hidden;
+    hidden = d;
+  }
+  hid_free_enumeration(hidden);
+  return list;
+}
+
+hid_device* StockOpen(unsigned short vid, unsigned short pid, const wchar_t* serial) {
+  hid_device_info* list = StockEnumerate(vid, pid);
+  std::string path;
+  for (auto* d = list; d && path.empty(); d = d->next)
+    if (d->path && (!serial || (d->serial_number && std::wcscmp(d->serial_number, serial) == 0))) path = d->path;
+  hid_free_enumeration(list);
+  return path.empty() ? nullptr : hid_open_path(path.c_str());
+}
+
+bool ForwardHidToOurs(HMODULE module) {
+  struct Entry { const char* name; void* ours; };
+  const Entry entries[] = {
+      {"hid_init", reinterpret_cast<void*>(&hid_init)},
+      {"hid_exit", reinterpret_cast<void*>(&hid_exit)},
+      {"hid_enumerate", reinterpret_cast<void*>(&StockEnumerate)},
+      {"hid_free_enumeration", reinterpret_cast<void*>(&hid_free_enumeration)},
+      {"hid_open", reinterpret_cast<void*>(&StockOpen)},
+      {"hid_open_path", reinterpret_cast<void*>(&hid_open_path)},
+      {"hid_close", reinterpret_cast<void*>(&hid_close)},
+      {"hid_read", reinterpret_cast<void*>(&hid_read)},
+      {"hid_read_timeout", reinterpret_cast<void*>(&hid_read_timeout)},
+      {"hid_write", reinterpret_cast<void*>(&hid_write)},
+      {"hid_set_nonblocking", reinterpret_cast<void*>(&hid_set_nonblocking)},
+      {"hid_get_feature_report", reinterpret_cast<void*>(&hid_get_feature_report)},
+      {"hid_send_feature_report", reinterpret_cast<void*>(&hid_send_feature_report)},
+      {"hid_get_manufacturer_string", reinterpret_cast<void*>(&hid_get_manufacturer_string)},
+      {"hid_get_product_string", reinterpret_cast<void*>(&hid_get_product_string)},
+      {"hid_get_serial_number_string", reinterpret_cast<void*>(&hid_get_serial_number_string)},
+      {"hid_get_indexed_string", reinterpret_cast<void*>(&hid_get_indexed_string)},
+      {"hid_error", reinterpret_cast<void*>(&hid_error)},
+  };
+  // mov rax, imm64; jmp rax: 12 bytes, only rax (volatile at a call) touched.
+  constexpr size_t kPatch = 12;
+  struct Target { uint8_t* at; void* ours; };
+  std::vector<Target> targets;
+  // Function starts we know of: every unwind-table entry and every export. A leaf function
+  // (hid_read, hid_error, hid_set_nonblocking in SteamVR 2.18/2.19) has no unwind entry; its
+  // room is the gap to the next start (16-byte slots, int3-padded, there).
+  auto* base = reinterpret_cast<uint8_t*>(module);
+  auto* nt = reinterpret_cast<IMAGE_NT_HEADERS*>(base + reinterpret_cast<IMAGE_DOS_HEADER*>(base)->e_lfanew);
+  const auto& exDir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
+  const auto* fns = reinterpret_cast<const RUNTIME_FUNCTION*>(base + exDir.VirtualAddress);
+  const size_t fnCount = exDir.VirtualAddress ? exDir.Size / sizeof(RUNTIME_FUNCTION) : 0;
+  std::vector<DWORD> starts;
+  for (size_t i = 0; i < fnCount; ++i) starts.push_back(fns[i].BeginAddress);
+  for (const auto& e : entries)
+    if (auto* at = reinterpret_cast<uint8_t*>(reinterpret_cast<void*>(GetProcAddress(module, e.name))))
+      starts.push_back(DWORD(at - base));
+  for (const auto& e : entries) {
+    auto* at = reinterpret_cast<uint8_t*>(reinterpret_cast<void*>(GetProcAddress(module, e.name)));
+    if (!at) continue;  // not exported by this version: nothing calls it from outside
+    const DWORD rva = DWORD(at - base);
+    DWORD room = 0;
+    for (size_t i = 0; i < fnCount; ++i)
+      if (fns[i].BeginAddress == rva) room = fns[i].EndAddress - fns[i].BeginAddress;
+    if (!room) {
+      DWORD next = 0xFFFFFFFF;
+      for (DWORD s : starts)
+        if (s > rva && s < next) next = s;
+      room = next == 0xFFFFFFFF ? 0 : next - rva;
+    }
+    if (room < kPatch) return false;  // the patch would run into the next function
+    targets.push_back({at, e.ours});
+  }
+  if (targets.empty()) return false;
+  for (const auto& t : targets) {
+    DWORD old = 0;
+    if (!VirtualProtect(t.at, kPatch, PAGE_EXECUTE_READWRITE, &old)) return false;  // none called yet: safe to stop
+    uint8_t code[kPatch] = {0x48, 0xB8};
+    const uint64_t to = reinterpret_cast<uint64_t>(t.ours);
+    std::memcpy(code + 2, &to, sizeof to);
+    code[10] = 0xFF;
+    code[11] = 0xE0;
+    std::memcpy(t.at, code, kPatch);
+    VirtualProtect(t.at, kPatch, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), t.at, kPatch);
+  }
+  return true;
+}
+
 bool HideOtherDevices(HMODULE module) {
   g_realDetail = reinterpret_cast<InterfaceDetailA>(
       reinterpret_cast<void*>(GetProcAddress(GetModuleHandleA("setupapi.dll"), "SetupDiGetDeviceInterfaceDetailA")));
@@ -315,6 +423,7 @@ class StockHmd::DeviceProxy : public ITrackedDeviceServerDriver {
   void EnterStandby() override { inner_->EnterStandby(); }
   void* GetComponent(const char* name) override { return inner_->GetComponent(name); }
   void DebugRequest(const char* request, char* response, uint32_t size) override {
+    if (owner_->requestHandler_ && owner_->requestHandler_(request, response, size)) return;
     inner_->DebugRequest(request, response, size);
   }
   DriverPose_t GetPose() override { return inner_->GetPose(); }
@@ -479,14 +588,65 @@ class StockHmd::LogFilter : public IVRDriverLog {
   std::map<std::string, std::chrono::steady_clock::time_point> seen_;
 };
 
+// The stock driver's own tracker (unused: ours drives the pose) writes its room's universe
+// onto the headset each time it acquires, so SteamVR switches to that universe's chaperone
+// (play area, standing and seated origins). Ours writes the universe only when its own
+// changes, so a stock tracker that lost its light and re-acquired mid-session left SteamVR
+// in the stock universe until the end (live: twice in five sessions, the two universes'
+// origins 15 cm / 1.2 deg apart seated, 32 cm / 12 deg standing). The universe is ours to
+// set: the stock driver's writes of it are dropped (reported as done); all else passes.
+class StockHmd::Properties : public IVRProperties {
+ public:
+  Properties(IVRProperties* real, StockHmd* owner) : real_(real), owner_(owner) {}
+  ETrackedPropertyError ReadPropertyBatch(PropertyContainerHandle_t c, PropertyRead_t* batch, uint32_t n) override {
+    return real_->ReadPropertyBatch(c, batch, n);
+  }
+  ETrackedPropertyError WritePropertyBatch(PropertyContainerHandle_t c, PropertyWrite_t* batch, uint32_t n) override {
+    std::vector<uint32_t> kept;
+    for (uint32_t i = 0; batch && i < n; ++i) {
+      if (batch[i].prop != Prop_CurrentUniverseId_Uint64) {
+        kept.push_back(i);
+        continue;
+      }
+      batch[i].eSetError = batch[i].eError = TrackedProp_Success;
+      if (!logged_.exchange(true) && owner_->log_)
+        owner_->log_("stock driver: its universe writes are dropped (ours sets the headset's universe)");
+    }
+    if (!batch || kept.size() == n) return real_->WritePropertyBatch(c, batch, n);
+    if (kept.empty()) return TrackedProp_Success;
+    std::vector<PropertyWrite_t> pass;
+    pass.reserve(kept.size());
+    for (const uint32_t i : kept) pass.push_back(batch[i]);
+    const ETrackedPropertyError r = real_->WritePropertyBatch(c, pass.data(), uint32_t(pass.size()));
+    for (size_t k = 0; k < kept.size(); ++k) {
+      batch[kept[k]].eSetError = pass[k].eSetError;
+      batch[kept[k]].eError = pass[k].eError;
+    }
+    return r;
+  }
+  const char* GetPropErrorNameFromEnum(ETrackedPropertyError e) override { return real_->GetPropErrorNameFromEnum(e); }
+  PropertyContainerHandle_t TrackedDeviceToPropertyContainer(TrackedDeviceIndex_t d) override {
+    return real_->TrackedDeviceToPropertyContainer(d);
+  }
+
+ private:
+  IVRProperties* real_;
+  StockHmd* owner_;
+  std::atomic<bool> logged_{false};
+};
+
 class StockHmd::Context : public IVRDriverContext {
  public:
-  Context(IVRDriverContext* real, Host* host, Settings* settings, StockHmd::LogFilter* log)
-      : real_(real), host_(host), settings_(settings), log_(log) {}
+  Context(IVRDriverContext* real, Host* host, Settings* settings, Properties* properties, StockHmd::LogFilter* log)
+      : real_(real), host_(host), settings_(settings), properties_(properties), log_(log) {}
   void* GetGenericInterface(const char* version, EVRInitError* error) override {
     if (version && std::string(version) == IVRServerDriverHost_Version) {
       if (error) *error = VRInitError_None;
       return host_;
+    }
+    if (properties_ && version && std::string(version) == IVRProperties_Version) {
+      if (error) *error = VRInitError_None;
+      return properties_;
     }
     if (log_ && version && std::string(version) == IVRDriverLog_Version) {
       if (error) *error = VRInitError_None;
@@ -511,6 +671,7 @@ class StockHmd::Context : public IVRDriverContext {
   IVRDriverContext* real_;
   Host* host_;
   Settings* settings_;
+  Properties* properties_;
   StockHmd::LogFilter* log_;
   StockMailbox* mailbox_ = nullptr;  // created on first request, never freed (as the rest)
 };
@@ -600,6 +761,14 @@ bool StockHmd::Load(const std::string& path, IVRDriverContext* realContext, LogF
     }
     if (!HideOtherDevices(module) && log_) log_("stock driver: could not limit it to the headset's devices");
   }
+  // Its HID through our hidapi exports (see ForwardHidToOurs). LH_STOCK_OWN_HID=1: its own.
+  if (!std::getenv("LH_STOCK_OWN_HID")) {
+    if (ForwardHidToOurs(module)) {
+      if (log_) log_("stock driver: its HID access goes through openhouse's hid_* exports");
+    } else if (log_) {
+      log_("stock driver: could not route its HID access through openhouse's hid_* exports");
+    }
+  }
 #else
   // RTLD_LOCAL: its symbols (HmdDriverFactory, its OpenVR helpers) stay its own.
   library_ = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
@@ -647,9 +816,11 @@ bool StockHmd::Load(const std::string& path, IVRDriverContext* realContext, LogF
     }
     settings_ = new Settings(realSettings, std::move(defaults));
   }
+  if (auto* realProperties = static_cast<IVRProperties*>(real_->GetGenericInterface(IVRProperties_Version, nullptr)))
+    properties_ = new Properties(realProperties, this);
   if (auto* realLog = static_cast<IVRDriverLog*>(real_->GetGenericInterface(IVRDriverLog_Version, nullptr)))
     logProxy_ = new LogFilter(realLog);
-  context_ = new Context(real_, host_, settings_, logProxy_);
+  context_ = new Context(real_, host_, settings_, properties_, logProxy_);
   const EVRInitError r = provider->Init(context_);
   if (r != VRInitError_None) {
     if (log_) log_("stock driver: Init failed (" + std::to_string(int(r)) + ")");
@@ -678,6 +849,10 @@ void StockHmd::PushEvent(const VREvent_t& event) {
 
 void StockHmd::RunFrame() {
   if (provider_) provider_->RunFrame();
+}
+
+void StockHmd::LeaveStandby() {
+  if (provider_) provider_->LeaveStandby();
 }
 
 std::optional<StockHmd::Activated> StockHmd::TakeActivated() {

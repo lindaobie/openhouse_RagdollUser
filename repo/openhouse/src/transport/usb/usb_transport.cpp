@@ -1,6 +1,8 @@
 #include <cstdarg>
 #include <array>
 #include "usb_transport.hpp"
+
+#include <mutex>
 #include "device_config.hpp"
 #include "haptics.hpp"
 #include "platform/platform.hpp"
@@ -57,9 +59,12 @@ bool Classify(uint16_t pid, int iface, EndpointKind& kind) {
     case 0x2000:  // Lighthouse FPGA RX (Index HMD, Vive Pro)
     case 0x2012:
     case 0x2022:
-    case 0x2300:  // Bigscreen Beyond (SteamVR shows it as a Tundra device)
+    case 0x2300:  // Bigscreen Beyond (SteamVR shows it as a Tundra device), Vive Tracker 2018/3.0
       if (iface == 0) { kind = EndpointKind::Imu; return true; }
       if (iface == 1) { kind = EndpointKind::Optical; return true; }
+      // Buttons (libsurvive TRACKER0/1_BUTTONS, W_WATCHMAN1_BUTTONS): a tracker's power button
+      // and pogo pins on USB. Not on 0x2000, whose iface 2 is the headset's own.
+      if (iface == 2 && pid != 0x2000) { kind = EndpointKind::Buttons; return true; }
       return false;
     case 0x2101:  // Watchman dongle
     case 0x2102:  // Watchman radio / Kuroshin dongle
@@ -88,8 +93,15 @@ void ReportDecoder::AddEndpoint(const EndpointInfo& e) {
   if (e.kind == EndpointKind::Imu) ep.imu = std::make_unique<ImuReportParser>(dev, sink_);
   if (e.kind == EndpointKind::Optical) ep.optical = std::make_unique<OpticalReportParser>(dev, sink_);
   if (e.kind == EndpointKind::Wireless) ep.wireless = std::make_unique<WirelessReportParser>(dev, sink_);
+  if (e.kind == EndpointKind::Buttons) ep.buttons = std::make_unique<ButtonsReportParser>(dev, sink_);
   eps_[e.ep] = std::move(ep);
-  if (fresh || !e.configJson.empty()) sink_->OnDeviceAttached(e.serial, e.configJson);
+  // The buttons interface carries no config: its device attaches with its IMU interface.
+  // Announced when it's new, carries a config, or is the device's only endpoint again after
+  // an unplug (a replugged device without a readable config was otherwise never re-attached, #49.3).
+  const bool alone = std::none_of(eps_.begin(), eps_.end(), [&](const auto& other) {
+    return other.first != e.ep && other.second.info.serial == e.serial;
+  });
+  if (e.kind != EndpointKind::Buttons && (fresh || alone || !e.configJson.empty())) sink_->OnDeviceAttached(e.serial, e.configJson);
 }
 
 void ReportDecoder::ResetWireless(Ep& ep) {
@@ -114,6 +126,7 @@ void ReportDecoder::OnReport(double hostTime, uint16_t epId, bool last, const ui
   Ep& ep = it->second;
   if (ep.imu) ep.imu->Parse(hostTime, data, len, last);
   else if (ep.optical) ep.optical->Parse(hostTime, data, len);
+  else if (ep.buttons) ep.buttons->Parse(hostTime, data, len);
   else if (ep.wireless && len) {
     if (data[0] == 0x26) { ResetWireless(ep); return; }
     if (data[0] != 0x23 && data[0] != 0x24) return;
@@ -163,6 +176,12 @@ bool UsbTransport::FetchRangeModes(hid_device_* dev, int8_t& gyro, int8_t& accel
   return false;
 }
 
+std::optional<uint32_t> UsbTransport::ConnectedSerial(hid_device_* receiver) {
+  DeviceInfo di;
+  if (!QueryDeviceInfo(receiver, &di, 2)) return std::nullopt;
+  return di.serial;
+}
+
 bool UsbTransport::QueryDeviceInfo(hid_device_* dev, DeviceInfo* info, int attempts) {
   // 0x3dd8a0: feature 0xff [0x83] then read back a TLV list of 5-byte entries
   // {u8 type; u32 value}; type 2 bit 3 = wireless protocol versioning supported.
@@ -201,7 +220,14 @@ bool UsbTransport::RequestProtocolVersion(hid_device_* dev, int version) {
 }
 
 UsbTransport::OpenResult UsbTransport::OpenEndpoint(const hid_device_info* d, Open* out) {
-  hid_device* h = hid_open_path(d->path);
+  // One open at a time: hidapi's hid_open_path resets and sets a process-wide error string,
+  // which parallel opens would free twice (#49.5). The config read after it stays parallel.
+  static std::mutex openMutex;
+  hid_device* h = nullptr;
+  {
+    std::lock_guard openLock(openMutex);
+    h = hid_open_path(d->path);
+  }
   if (!h) {
     std::lock_guard lock(pathsMutex_);
     if (failedPaths_.insert(d->path).second) Log(LogLevel::Warn, "cannot open %s\n", d->path);
@@ -271,7 +297,8 @@ void UsbTransport::Enumerate(bool startup) {
       workers.emplace_back([&, i] { results[i] = OpenEndpoint(fresh[i], &opened[i]); });
     for (auto& w : workers) w.join();
   }
-  for (size_t i = 0; i < fresh.size() && !stop_; ++i) {
+  // Every opened handle goes to a list Stop() closes, stopping or not (#49.4).
+  for (size_t i = 0; i < fresh.size(); ++i) {
     Open& o = opened[i];
     const OpenResult result = results[i];
     if (result == OpenResult::Failed) continue;
@@ -371,6 +398,7 @@ void AddSensorType(std::string* json, int type) {
 }  // namespace
 
 void UsbTransport::CompleteSetup(Open& o, bool supportsVersioning) {
+  if (o.info.kind == EndpointKind::Buttons) return;  // input only: no sensor type, ranges or config
   if (o.info.kind != EndpointKind::Optical) {
     o.sensorType = ReadSensorType(o.dev);
       Log(LogLevel::Debug, "%s: hardware sensor type %s\n", o.info.serial.c_str(),
@@ -434,6 +462,13 @@ std::vector<UsbTransport::Receiver> UsbTransport::Receivers() const {
   return out;
 }
 
+void UsbTransport::OnDeviceGone(const DeviceId& serial) {
+  std::lock_guard lock(receiversMutex_);
+  for (auto& [id, r] : receivers_) {
+    if (r.connected == serial) r.connected.clear();
+  }
+}
+
 bool UsbTransport::SetPairing(const std::string& receiver, int milliseconds) {
   {
     std::lock_guard lock(receiversMutex_);
@@ -467,12 +502,103 @@ bool UsbTransport::TakePairing(Open& o) {
   return n == int(report.size()) && command.milliseconds > 0;
 }
 
+std::string UsbTransport::BluetoothReceiver() const {
+  std::lock_guard lock(receiversMutex_);
+  for (const auto& [serial, r] : receivers_)
+    if (IsBluetoothReceiver(r.pid, serial)) return serial;
+  return {};
+}
+
+bool UsbTransport::HasBluetoothReceiver() const { return !BluetoothReceiver().empty(); }
+
+std::optional<RadioMode> UsbTransport::RunRadioCommand(const std::string& receiver, std::optional<RadioMode> set) {
+  auto command = std::make_shared<RadioCommand>();
+  command->receiver = receiver;
+  command->set = set;
+  auto result = command->result.get_future();
+  {
+    std::lock_guard lock(hapticMutex_);
+    radioCommands_.push_back(command);
+  }
+  if (result.wait_for(std::chrono::seconds(2)) == std::future_status::ready) return result.get();
+  // The receiver went away, so nothing will take it.
+  std::lock_guard lock(hapticMutex_);
+  radioCommands_.erase(std::remove(radioCommands_.begin(), radioCommands_.end(), command), radioCommands_.end());
+  return std::nullopt;
+}
+
+void UsbTransport::TakeRadioCommands(Open& o) {
+  if (o.receiver.empty()) return;
+  std::vector<std::shared_ptr<RadioCommand>> commands;
+  {
+    std::lock_guard lock(hapticMutex_);
+    for (auto it = radioCommands_.begin(); it != radioCommands_.end();) {
+      if ((*it)->receiver != o.receiver) { ++it; continue; }
+      commands.push_back(*it);
+      it = radioCommands_.erase(it);
+    }
+  }
+  for (const auto& command : commands) {
+    std::optional<RadioMode> answer;
+    if (command->set) {
+      const auto report = RadioModeReport(*command->set);
+      if (hid_send_feature_report(o.dev, report.data(), report.size()) == int(report.size())) {
+        answer = command->set;
+        o.bluetooth = *command->set == RadioMode::Bluetooth;
+      }
+      Log(LogLevel::Debug, "receiver %s: radio to %s: %s\n", o.receiver.c_str(),
+          *command->set == RadioMode::Bluetooth ? "Bluetooth" : "Valve's", answer ? "sent" : "failed");
+    } else {
+      const auto query = RadioModeQuery();
+      if (hid_send_feature_report(o.dev, query.data(), query.size()) == int(query.size())) {
+        std::array<uint8_t, 64> reply{};
+        reply[0] = 0xff;
+        const int n = hid_get_feature_report(o.dev, reply.data(), reply.size());
+        answer = ParseRadioMode(reply.data(), n);
+      }
+    }
+    command->result.set_value(answer);
+  }
+}
+
+bool UsbTransport::SetBluetoothRadio(bool on) {
+  const std::string receiver = BluetoothReceiver();
+  if (receiver.empty()) return false;
+  if (!on) return RunRadioCommand(receiver, RadioMode::Valve).has_value();
+  bool ok = false;
+  if (RunRadioCommand(receiver, RadioMode::Bluetooth)) {
+    for (int attempt = 0; attempt < 3 && !ok; ++attempt) {
+      if (attempt) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      ok = RunRadioCommand(receiver, std::nullopt) == RadioMode::Bluetooth;
+    }
+  }
+  if (!ok) {
+    Log(LogLevel::Warn, "receiver %s: its radio didn't switch to Bluetooth\n", receiver.c_str());
+    RunRadioCommand(receiver, RadioMode::Valve);
+  }
+  return ok;
+}
+
+std::optional<bool> UsbTransport::BluetoothRadioOn() {
+  const std::string receiver = BluetoothReceiver();
+  if (receiver.empty()) return std::nullopt;
+  const auto mode = RunRadioCommand(receiver, std::nullopt);
+  if (!mode) return std::nullopt;
+  return *mode == RadioMode::Bluetooth;
+}
+
 void UsbTransport::ProbeMain() {
+  // Someone is waiting for each radio command, so they don't wait for the slow parts below.
+  const auto serveRadio = [this] {
+    for (auto& o : idle_) TakeRadioCommands(o);
+  };
   while (!stop_) {
     Enumerate(false);
     for (size_t i = 0; i < idle_.size() && !stop_;) {
+      serveRadio();
       Open& o = idle_[i];
       TakePairing(o);
+      if (o.bluetooth) { ++i; continue; }  // nothing can connect to it for now
       DeviceInfo di;
       if (!QueryDeviceInfo(o.dev, &di, 2) || di.serial == 0) { ++i; continue; }
       char sn[16];
@@ -489,7 +615,10 @@ void UsbTransport::ProbeMain() {
       havePending_ = true;
       idle_.erase(idle_.begin() + long(i));
     }
-    for (int k = 0; k < 10 && !stop_; ++k) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    for (int k = 0; k < 10 && !stop_; ++k) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      serveRadio();
+    }
   }
 }
 
@@ -524,7 +653,8 @@ void UsbTransport::Haptic(const DeviceId& serial, double frequency, double ampli
   // Coalesce by device: a newer command replaces a pending one.
   for (auto it = haptics_.begin(); it != haptics_.end();) {
     if (it->serial == serial && it->powerOff) return;
-    if (it->serial == serial) it = haptics_.erase(it); else ++it;
+    // Only pending pulses: a queued light-mode command must still go out (#49.2).
+    if (it->serial == serial && it->opticalMode < 0) it = haptics_.erase(it); else ++it;
   }
   if (haptics_.size() < 64) haptics_.push_back({serial, HapticReport(frequency, amplitude, duration), HostNow() + 0.1});
 }
@@ -579,7 +709,7 @@ void UsbTransport::Run() {
     std::vector<HapticCommand> commands;
     { std::lock_guard lock(hapticMutex_); commands.swap(haptics_); }
     for (const auto& command : commands) {
-      DeviceCommandResult result{command.serial, command.powerOff, "not-connected", 0, command.report};
+      DeviceCommandResult result{command.serial, command.powerOff, "not-connected", 0, command.report, command.opticalMode};
       if (passStart > command.deadline) result.status = "expired";
       else for (auto& o : open_) {
         if (o.disconnected || o.info.serial != command.serial) continue;
@@ -597,12 +727,18 @@ void UsbTransport::Run() {
       }
       if (opts_.onCommandResult) opts_.onCommandResult(result);
       else if (std::string(result.status) != "written")
-        Log(LogLevel::Debug, "%s: %s %s (%d bytes)\n", command.serial.c_str(), command.powerOff ? "power-off" : "haptic", result.status, result.bytes);
+        Log(LogLevel::Debug, "%s: %s %s (%d bytes)\n", command.serial.c_str(), command.powerOff ? "power-off" : command.opticalMode >= 0 ? "light mode" : "haptic", result.status, result.bytes);
     }
     for (auto& o : open_) {
       // Pairing a receiver that has a device: the device is replaced, so the receiver
       // is reopened (as one with no device) and the new one picked up when it connects.
-      if (!o.disconnected && TakePairing(o)) o.disconnected = true;
+      if (!o.disconnected && TakePairing(o)) {
+        // Pairing takes the receiver from its device: report it gone now, as the endpoint
+        // is closed below in this pass and nothing would say so later (#49.1).
+        o.disconnected = true;
+        sink_->OnDeviceDetached(o.info.serial);
+      }
+      if (!o.disconnected) TakeRadioCommands(o);
     }
     for (auto& o : open_) {
       if (o.disconnected) continue;

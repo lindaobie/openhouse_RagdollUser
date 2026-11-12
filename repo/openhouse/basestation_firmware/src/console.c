@@ -96,6 +96,8 @@ static bool parse_float(const char *s, float *out)
     if (*s == '.') for (s++; *s >= '0' && *s <= '9'; s++, nd++) { scale /= 10; v += (*s - '0') * scale; }
     if ((*s | 0x20) == 'e') {
         long e; if (!parse_long(s + 1, &e)) return false;
+        /* Past float's range either way: refused, not two billion multiplies (#56.2). */
+        if (e > 60 || e < -60) return false;
         ex = e; s += strlen(s);
     }
     if (!nd || *s) return false;
@@ -330,7 +332,7 @@ static void cmd_corr(void)
     con_printf("mode %s  correlator %s  est period %.1f  missed %u\n",
                P.timebase_mode < 5 ? tb_mode_names[P.timebase_mode] : "?", timebase_corr_state(),
                P.corr_period, P.corr_missed);
-    con_printf("optical pulses seen %u  used %u  last width %u ticks (%.1f us)  phase err %d ticks\n",
+    con_printf("optical pulses seen %u  used %u  last width (optical or cable) %u ticks (%.1f us)  phase err %d ticks\n",
                timebase_pulses_seen(), timebase_pulses_used(), timebase_last_width(),
                (float)timebase_last_width() / 48.0f, timebase_phase_err());
     timebase_dump_trace(con_printf);

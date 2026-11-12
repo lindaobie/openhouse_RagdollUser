@@ -2,16 +2,21 @@
 #include <filesystem>
 #include <stdexcept>
 #include <cstdlib>
-#include <unistd.h>
+#include <fstream>
+#include <string>
+#include "platform/platform.hpp"
 #include "raw_capture.hpp"
 
 namespace {
+// A fresh file in the temp directory (also on Windows, where there's no mkstemp).
 struct TemporaryFile {
-  char path[64] = "/tmp/lh-capture-test-XXXXXX";
+  std::string path;
   TemporaryFile() {
-    const int fd = mkstemp(path);
-    if (fd < 0) throw std::runtime_error("mkstemp failed");
-    close(fd);
+    static int counter = 0;
+    path = (std::filesystem::temp_directory_path() / ("lh-capture-test-" + std::to_string(lh::platform::ProcessId()) +
+                                                      "-" + std::to_string(++counter)))
+               .string();
+    if (!std::ofstream(path, std::ios::binary)) throw std::runtime_error("cannot create " + path);
   }
   ~TemporaryFile() { std::error_code error; std::filesystem::remove(path, error); }
 };

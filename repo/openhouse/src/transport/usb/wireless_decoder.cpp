@@ -195,12 +195,19 @@ bool Wv2Decoder::Decode(uint8_t msb, const uint8_t* p, int n, WirelessPacket* ou
   }
   int len = (f & 0xf) + 1;
   bool doInput = input;
+  // Lengths come from the packet: none may run past its n bytes (#41: a section announced
+  // longer than what was left made the light copy below memcpy a negative length).
+  const uint8_t* const end = p + n;
   if (meta) {
     if (sections != 2) {
       len = n - int(q - p);
       if (len <= 0) return false;
     }
+    if (q + len > end) return false;
     const uint8_t m = *q;
+    // The fields m announces must fit in the section (the r > q check below, made before
+    // reading them rather than after).
+    if (1 + !!(m & 0x40) + !!(m & 0x80) + !!(m & 0x20) + !!(m & 0x10) > len) return false;
     const uint8_t* r = q + 1;
     if (m & 0x40) {
       out->hasEvent = true;
@@ -223,7 +230,7 @@ bool Wv2Decoder::Decode(uint8_t msb, const uint8_t* p, int n, WirelessPacket* ou
       controllerSub = v;
     }
     q += len;
-    if (r > q) return false;
+    if (r > q || q > end) return false;
     if (doInput) {
       len = n - int(q - p);
       if (len < 1) return false;
@@ -233,6 +240,7 @@ bool Wv2Decoder::Decode(uint8_t msb, const uint8_t* p, int n, WirelessPacket* ou
     if (len < 1) return false;
   }
   if (doInput) {
+    if (len < 0 || len > n - int(q - p)) return false;
     if (controllerSub == 2) {
       if (len > 4) {
         out->hasInputV2 = true;
@@ -304,7 +312,7 @@ bool Wv2Decoder::Decode(uint8_t msb, const uint8_t* p, int n, WirelessPacket* ou
   if (opticalSub == 0xff) return false;
   if (opticalSub == 0) {
     const int ll = n - int(q - p);
-    if (ll >= 0x1c) return false;
+    if (ll < 0 || ll >= 0x1c) return false;
     uint8_t buf[0x20];
     buf[0] = lsb;
     std::memcpy(buf + 1, q, size_t(ll));

@@ -95,6 +95,9 @@ static void append(const uint8_t *p, unsigned n)
 static float wrap2pi(float x)
 {
     const float tp = 6.2831853f;
+    /* Out of any sensible range, infinite or NaN: 0. Subtracting 2pi from a value this big
+       rounds back to it and never ends, and a saved one hung every boot (#56.1). */
+    if (!(x > -1000.0f && x < 1000.0f)) return 0;
     while (x >= tp) x -= tp;
     while (x < 0) x += tp;
     return x;

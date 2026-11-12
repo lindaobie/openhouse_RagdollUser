@@ -205,9 +205,16 @@ int TdmDisambiguator::RetrySensorType() {
       const double ph = std::fmod(t, idealPeriod_) / idealPeriod_;
       bool matched = false;
       for (auto& c : clusters_) {
-        double d = std::fabs(ph - c.Avg());
+        const double avg = c.Avg();
+        double d = std::fabs(ph - avg);
         d = std::min(d, 1.0 - d);
         if (d < kClusterTol) {
+          // Its phase into the sum too (it was only counted, so the average halved and no
+          // cluster ever reached a lock, #48.2), unwrapped next to the average.
+          double x = ph;
+          if (x - avg > 0.5) x -= 1.0;
+          else if (avg - x > 0.5) x += 1.0;
+          c.sum += x;
           c.count++;
           c.lastTime = std::max(c.lastTime, t);
           matched = true;

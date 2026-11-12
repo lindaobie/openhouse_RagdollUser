@@ -1,3 +1,4 @@
+#include <chrono>
 // openhouse-viewer: a live view of the running openhouse driver (SteamVR or Monado).
 //
 // Connects to the driver's telemetry on 127.0.0.1 (lh/telemetry.hpp) and shows what a
@@ -152,7 +153,21 @@ int main() {
   float logShare = 0.38f;  // of the window height
   BugReport report;
 
+  double nextFrame = glfwGetTime();
   while (!glfwWindowShouldClose(window)) {
+    // At most 60 frames a second, 20 when the window isn't focused, and none while minimized,
+    // whatever vsync does: drivers ignore the swap interval for a hidden window or when vsync
+    // is forced off, and the viewer then drew thousands of frames a second on the GPU.
+    const bool iconified = glfwGetWindowAttrib(window, GLFW_ICONIFIED);
+    const double interval = glfwGetWindowAttrib(window, GLFW_FOCUSED) ? 1.0 / 60 : 1.0 / 20;
+    if (iconified) {
+      glfwWaitEventsTimeout(0.25);
+      client.Poll(glfwGetTime());  // keeps reading, so nothing piles up
+      continue;
+    }
+    const double wait = nextFrame + interval - glfwGetTime();
+    if (wait > 0) std::this_thread::sleep_for(std::chrono::duration<double>(wait));
+    nextFrame = glfwGetTime();
     glfwPollEvents();
     client.Poll(glfwGetTime());
     ImGui_ImplOpenGL2_NewFrame();
