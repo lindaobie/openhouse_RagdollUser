@@ -127,7 +127,6 @@ const EN = {
   '接下来': 'Next',
   '原厂备份在位': 'Stock backup present',
   '没有原厂备份': 'No stock backup',
-  '基站': 'Base stations',
   '驱动遥测没有响应': 'No telemetry from the driver',
   '没有状态广播': 'No state broadcast',
   '启动 SteamVR，基站状态才能读出来。': 'Start SteamVR so the base stations can be read.',
@@ -159,7 +158,10 @@ const EN = {
   '定位误差': 'Placement sigma',
   '观测帧数': 'Solve frames',
   '故障计数': 'Fault count',
-  '激光击中次数': 'Laser hits per second',
+
+  '驱动没有在广播状态': 'Driver present, no state broadcast',
+  'SteamVR 没启动，或者驱动不是 openhouse 的': 'SteamVR is not running, or the driver is not openhouse',
+  '前往刷写固件': 'Go to flashing',
 
   // ---- flashing page
   '一次只接一台。写入只覆盖应用区，序列号和激光标定存在别的芯片里，不会被碰。':
@@ -168,7 +170,6 @@ const EN = {
   '刷写破解固件': 'Flash lhbs firmware',
   '还原原厂固件': 'Restore stock firmware',
   '与镜像对比': 'Compare with image',
-  '状态': 'State',
   '原厂固件': 'Stock firmware',
   '破解固件': 'lhbs firmware',
   '停止': 'Stop',
@@ -203,6 +204,43 @@ const EN = {
   '仓库': 'Repository',
   '上游': 'Upstream',
   '实现原理': 'How it works',
+
+  // ---- flashing page
+  '等待设备': 'Waiting for device',
+  '发现设备': 'Device found',
+  '已连接': 'Connected',
+  '还原到原始固件': 'Restoring stock firmware',
+  '断电': 'Power off',
+  '拔掉基站电源': 'Unplug the station',
+  '按住背面按钮': 'Hold the button on the back',
+  '按住不要松': 'Keep holding it',
+  '插 micro-USB': 'Plug in micro-USB',
+  '必须是数据线': 'A data cable, not charge-only',
+  '插电源，再松手': 'Power on, then release',
+  '出现 CRP DISABLED 盘': 'A CRP DISABLED volume appears',
+  '当前基站': 'Current station',
+  '没有检测到设备': 'No device detected',
+  '按上面四步接上': 'Follow the four steps above',
+  '固件镜像': 'Firmware image',
+  '日期': 'Date',
+  '只读检查': 'Read-only check',
+  '一次只接一台。写入只覆盖前 49,664 字节，序列号和激光标定存在别的芯片里，不会被碰。':
+    'One station at a time. Only the first 49,664 bytes are written; the serial number and laser calibration live in another chip and are left alone.',
+  '写入后需要拔线重插一次才能完成校验——只有重插，读回来的才是 flash 里的真实内容。':
+    'After writing, unplug and replug once to verify: only then does the read-back come from the flash itself.',
+  '刷写 lhbs 固件': 'Flash lhbs firmware',
+
+  // ---- map page
+  '拖动旋转，滚轮缩放。锥体是解算出的照射方向。原点基站位姿按定义为零，永远在正中间。':
+    'Drag to orbit, scroll to zoom. The cone is the solved beam direction. The origin station is zero by definition, so it always sits in the middle.',
+
+  // ---- driver page
+  'openhouse 在位': 'openhouse in place',
+  '原厂驱动': 'Stock driver',
+
+  // ---- log
+  '演示版，只读': 'demo build, read-only',
+  '已刷新': 'Refreshed',
   '给 HTC Vive 一代基站的图形化工具：刷固件、装驱动、看摆位。':
     'A graphical tool for HTC Vive 1.0 base stations: flash firmware, install the driver, check placement.',
   '基站为什么能超过两台。': 'Why more than two stations work.',
@@ -227,7 +265,6 @@ const EN = {
   '未开始检测': 'Not started',
   '会自动关闭 SteamVR 相关进程': 'closes the SteamVR processes',
   'SteamVR 正在运行': 'SteamVR is running',
-  '原厂备份在位': 'Stock backup present',
   '台基站': 'stations',
   '个设备': 'devices',
   '学习': 'learned',
@@ -235,6 +272,12 @@ const EN = {
   '台在线': 'online',
   '个时间槽': 'slots',
   '正在执行': 'Working',
+};
+
+// Phrases that only ever appear glued to something else ("1 · 已开启", "房间已收敛 · 学习 3 台").
+// Kept apart from EN on purpose: replacing generic words like 驱动 or 设备 inside a sentence
+// produces "DriverNone在广播State", which is worse than leaving it Chinese.
+const EN_PARTIAL = {
 };
 
 // Text that carries numbers or names. First match wins.
@@ -300,10 +343,10 @@ function translateText(text) {
   if (key.length > 24) return text;
   let out = text;
   let hit = false;
-  const keys = Object.keys(EN).filter((k) => k.length >= 2).sort((a, b) => b.length - a.length);
+  const keys = Object.keys(EN_PARTIAL).sort((a, b) => b.length - a.length);
   for (const zh of keys) {
     if (out.indexOf(zh) < 0) continue;
-    out = out.split(zh).join(EN[zh]);
+    out = out.split(zh).join(EN_PARTIAL[zh]);
     hit = true;
   }
   if (!hit) return text;

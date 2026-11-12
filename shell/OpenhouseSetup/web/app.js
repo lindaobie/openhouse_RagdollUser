@@ -1007,6 +1007,8 @@ function renderView() {
     const md = $('mapdata');
     if (md) md.innerHTML = mapDataHtml(st);
     Map3D.show(view.querySelector('#map3d'), st);
+    // The table under the scene is rebuilt here, not by the full render path.
+    translateDom(view);
     return;
   }
   const safe = (fn) => {
