@@ -18,20 +18,35 @@ internal static class Probe
     private const long OpenhouseDriverMinSize = 3_000_000;
     private const long StockDriverSize = 2_756_248;
 
+    // DriveInfo.GetDrives() blocks on a dead network share or a spun-down optical drive,
+    // and the firmware scan reads every .bin. None of that changes ten times a second.
+    // SteamVR and the telemetry stay live: they are what the page actually watches.
+    private static JsonObject? _slowCache;
+    private static DateTime _slowAt = DateTime.MinValue;
+
+    /// Drops the cached fields, for callers that just changed the state they describe.
+    public static void Invalidate() => _slowAt = DateTime.MinValue;
+
     public static JsonObject Snapshot()
     {
-        var o = new JsonObject
+        if (_slowCache is null || (DateTime.UtcNow - _slowAt).TotalSeconds >= 2.0)
         {
-            ["steamvr"] = SteamVr(),
-            ["drives"] = Drives(),
-            ["crp"] = Crp(),
-            ["firmware"] = Firmware(),
-            ["backups"] = Backups(),
-            ["stock"] = Stock(),
-            ["logdir"] = Log.Dir ?? "",
-            ["telemetry"] = Telemetry(),
-            ["time"] = DateTime.Now.ToString("HH:mm:ss"),
-        };
+            _slowCache = new JsonObject
+            {
+                ["drives"] = Drives(),
+                ["crp"] = Crp(),
+                ["firmware"] = Firmware(),
+                ["backups"] = Backups(),
+                ["stock"] = Stock(),
+            };
+            _slowAt = DateTime.UtcNow;
+        }
+        var o = new JsonObject();
+        foreach (var kv in _slowCache) o[kv.Key] = kv.Value?.DeepClone();
+        o["steamvr"] = SteamVr();
+        o["logdir"] = Log.Dir ?? "";
+        o["telemetry"] = Telemetry();
+        o["time"] = DateTime.Now.ToString("HH:mm:ss");
         return o;
     }
 
@@ -441,14 +456,91 @@ internal static class Probe
         return arr;
     }
 
+    // The placement helper runs with SteamVR closed, so every poll would otherwise pay the
+    // full connect timeout before finding nothing. Remember a failure for a moment.
+    private static DateTime _telFailedAt = DateTime.MinValue;
+
+    // Live subscription. The driver broadcasts to every connected client, so the map page
+    // keeps one socket open instead of asking for a single line eleven times a second. Other
+    // pages never start it: there is nothing there to watch, and the one-shot read is fine.
+    private static Thread? _liveThread;
+    private static volatile bool _liveStop;
+    private static JsonNode? _liveState;
+    private static readonly object _liveGate = new();
+
+    public static void StartLive()
+    {
+        lock (_liveGate)
+        {
+            if (_liveThread is not null) return;
+            _liveStop = false;
+            _liveThread = new Thread(LiveLoop) { IsBackground = true, Name = "telemetry-live" };
+            _liveThread.Start();
+        }
+    }
+
+    public static void StopLive()
+    {
+        lock (_liveGate)
+        {
+            _liveStop = true;
+            _liveThread = null;
+            _liveState = null;
+        }
+    }
+
+    private static void LiveLoop()
+    {
+        while (!_liveStop)
+        {
+            try
+            {
+                using var client = new TcpClient();
+                if (!client.ConnectAsync("127.0.0.1", 36840).Wait(500))
+                {
+                    Thread.Sleep(1000);
+                    continue;
+                }
+                using var stream = client.GetStream();
+                using var reader = new StreamReader(stream, Encoding.UTF8);
+                while (!_liveStop)
+                {
+                    var line = reader.ReadLine();
+                    if (line is null) break;
+                    if (line.IndexOf("\"state\"", StringComparison.Ordinal) < 0) continue;
+                    JsonNode? node;
+                    try { node = JsonNode.Parse(line); } catch { continue; }
+                    if (node?["type"]?.GetValue<string>() != "state") continue;
+                    lock (_liveGate) _liveState = node;
+                    _telFailedAt = DateTime.MinValue;
+                }
+            }
+            catch { }
+            if (!_liveStop) Thread.Sleep(500);
+        }
+    }
+
     private static JsonObject Telemetry()
     {
+        if (_liveThread is not null)
+        {
+            JsonNode? node;
+            lock (_liveGate) node = _liveState;
+            if (node is not null) return FromState(node);
+        }
+
         var o = new JsonObject();
         try
         {
-            using var client = new TcpClient();
-            if (!client.ConnectAsync("127.0.0.1", 36840).Wait(700))
+            if (DateTime.UtcNow - _telFailedAt < TimeSpan.FromSeconds(2))
             {
+                o["running"] = false;
+                return o;
+            }
+            using var client = new TcpClient();
+            if (!client.ConnectAsync("127.0.0.1", 36840).Wait(300))
+            {
+                _telFailedAt = DateTime.UtcNow;
                 o["running"] = false;
                 return o;
             }
@@ -462,76 +554,8 @@ internal static class Probe
                 JsonNode? node;
                 try { node = JsonNode.Parse(line); } catch { continue; }
                 if (node?["type"]?.GetValue<string>() != "state") continue;
-
-                o["running"] = true;
-                o["room"] = node["room"]?.DeepClone();
-                var bases = new JsonArray();
-                foreach (var b in node["bases"]?.AsArray() ?? new JsonArray())
-                {
-                    var p = new JsonArray();
-                    var q = new JsonArray();
-                    foreach (var v in b?["p"]?.AsArray() ?? new JsonArray()) p.Add(Math.Round(v!.GetValue<double>(), 4));
-                    foreach (var v in b?["q"]?.AsArray() ?? new JsonArray()) q.Add(Math.Round(v!.GetValue<double>(), 5));
-                    bases.Add(new JsonObject
-                    {
-                        ["serial"] = b?["serial"]?.GetValue<string>() ?? "",
-                        ["channel"] = b?["channel"]?.GetValue<string>() ?? "",
-                        ["origin"] = b?["origin"]?.GetValue<bool>() ?? false,
-                        ["locked"] = b?["locked"]?.GetValue<bool>() ?? false,
-                        ["placed"] = b?["placed"]?.GetValue<bool>() ?? false,
-                        ["learned"] = b?["learned"]?.GetValue<bool>() ?? false,
-                        ["seen"] = b?["seen"]?.GetValue<bool>() ?? false,
-                        ["status"] = b?["status"]?.GetValue<string>() ?? "",
-                        ["sigma"] = b?["sigma"]?.GetValue<double>() ?? 0,
-                        ["observations"] = b?["observations"]?.GetValue<int>() ?? 0,
-                        ["faults"] = b?["faults"]?.GetValue<int>() ?? 0,
-                        ["p"] = p,
-                        ["q"] = q,
-                    });
-                }
-                o["bases"] = bases;
-
-                var devs = new JsonArray();
-                foreach (var d in node["devices"]?.AsArray() ?? new JsonArray())
-                {
-                    var p = new JsonArray();
-                    var q = new JsonArray();
-                    foreach (var v in d?["p"]?.AsArray() ?? new JsonArray()) p.Add(Math.Round(v!.GetValue<double>(), 4));
-                    foreach (var v in d?["q"]?.AsArray() ?? new JsonArray()) q.Add(Math.Round(v!.GetValue<double>(), 5));
-                    // Which stations actually light this device: the only honest way to judge
-                    // whether a solved orientation is pointing anywhere real.
-                    var cov = new JsonArray();
-                    var covDetail = new JsonArray();
-                    foreach (var c in d?["coverage"]?.AsArray() ?? new JsonArray())
-                    {
-                        var frames = c?["frames"]?.GetValue<int>() ?? 0;
-                        if (frames <= 0) continue;
-                        var name = c?["base"]?.GetValue<string>() ?? "";
-                        cov.Add(name);
-                        covDetail.Add(new JsonObject
-                        {
-                            ["base"] = name,
-                            ["frames"] = frames,
-                            ["sensors"] = Math.Round(c?["sensors"]?.GetValue<double>() ?? 0, 1),
-                        });
-                    }
-                    devs.Add(new JsonObject
-                    {
-                        ["serial"] = d?["serial"]?.GetValue<string>() ?? "",
-                        ["role"] = d?["role"]?.GetValue<string>() ?? "",
-                        ["state"] = d?["state"]?.GetValue<string>() ?? "",
-                        ["valid"] = d?["valid"]?.GetValue<bool>() ?? false,
-                        ["connected"] = d?["connected"]?.GetValue<bool>() ?? false,
-                        ["basesSeen"] = d?["basesSeen"]?.GetValue<int>() ?? 0,
-                        ["battery"] = d?["battery"]?.DeepClone(),
-                        ["p"] = p,
-                        ["q"] = q,
-                        ["coverage"] = cov,
-                        ["cov"] = covDetail,
-                    });
-                }
-                o["devices"] = devs;
-                return o;
+                _telFailedAt = DateTime.MinValue;
+                return FromState(node);
             }
             o["running"] = false;
         }
@@ -540,6 +564,80 @@ internal static class Probe
             o["running"] = false;
             o["error"] = e.GetType().Name;
         }
+        return o;
+    }
+
+    private static JsonObject FromState(JsonNode node)
+    {
+        var o = new JsonObject { ["running"] = true };
+        o["room"] = node["room"]?.DeepClone();
+
+        var bases = new JsonArray();
+        foreach (var b in node["bases"]?.AsArray() ?? new JsonArray())
+        {
+            var p = new JsonArray();
+            var q = new JsonArray();
+            foreach (var v in b?["p"]?.AsArray() ?? new JsonArray()) p.Add(Math.Round(v!.GetValue<double>(), 4));
+            foreach (var v in b?["q"]?.AsArray() ?? new JsonArray()) q.Add(Math.Round(v!.GetValue<double>(), 5));
+            bases.Add(new JsonObject
+            {
+                ["serial"] = b?["serial"]?.GetValue<string>() ?? "",
+                ["channel"] = b?["channel"]?.GetValue<string>() ?? "",
+                ["origin"] = b?["origin"]?.GetValue<bool>() ?? false,
+                ["locked"] = b?["locked"]?.GetValue<bool>() ?? false,
+                ["placed"] = b?["placed"]?.GetValue<bool>() ?? false,
+                ["learned"] = b?["learned"]?.GetValue<bool>() ?? false,
+                ["seen"] = b?["seen"]?.GetValue<bool>() ?? false,
+                ["status"] = b?["status"]?.GetValue<string>() ?? "",
+                ["sigma"] = b?["sigma"]?.GetValue<double>() ?? 0,
+                ["observations"] = b?["observations"]?.GetValue<int>() ?? 0,
+                ["faults"] = b?["faults"]?.GetValue<int>() ?? 0,
+                ["p"] = p,
+                ["q"] = q,
+            });
+        }
+        o["bases"] = bases;
+
+        var devs = new JsonArray();
+        foreach (var d in node["devices"]?.AsArray() ?? new JsonArray())
+        {
+            var p = new JsonArray();
+            var q = new JsonArray();
+            foreach (var v in d?["p"]?.AsArray() ?? new JsonArray()) p.Add(Math.Round(v!.GetValue<double>(), 4));
+            foreach (var v in d?["q"]?.AsArray() ?? new JsonArray()) q.Add(Math.Round(v!.GetValue<double>(), 5));
+            // Which stations actually light this device: the only honest way to judge whether
+            // a solved orientation is pointing anywhere real.
+            var cov = new JsonArray();
+            var covDetail = new JsonArray();
+            foreach (var c in d?["coverage"]?.AsArray() ?? new JsonArray())
+            {
+                var frames = c?["frames"]?.GetValue<int>() ?? 0;
+                if (frames <= 0) continue;
+                var name = c?["base"]?.GetValue<string>() ?? "";
+                cov.Add(name);
+                covDetail.Add(new JsonObject
+                {
+                    ["base"] = name,
+                    ["frames"] = frames,
+                    ["sensors"] = Math.Round(c?["sensors"]?.GetValue<double>() ?? 0, 1),
+                });
+            }
+            devs.Add(new JsonObject
+            {
+                ["serial"] = d?["serial"]?.GetValue<string>() ?? "",
+                ["role"] = d?["role"]?.GetValue<string>() ?? "",
+                ["state"] = d?["state"]?.GetValue<string>() ?? "",
+                ["valid"] = d?["valid"]?.GetValue<bool>() ?? false,
+                ["connected"] = d?["connected"]?.GetValue<bool>() ?? false,
+                ["basesSeen"] = d?["basesSeen"]?.GetValue<int>() ?? 0,
+                ["battery"] = d?["battery"]?.DeepClone(),
+                ["p"] = p,
+                ["q"] = q,
+                ["coverage"] = cov,
+                ["cov"] = covDetail,
+            });
+        }
+        o["devices"] = devs;
         return o;
     }
 }

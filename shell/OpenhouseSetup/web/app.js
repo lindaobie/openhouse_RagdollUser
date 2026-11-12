@@ -16,8 +16,12 @@ const NAV = [
       { id: 'base.flash', label: '刷写固件' },
       
       { id: 'base.map', label: '位置查看' },
-      
-      { id: 'base.link', label: '基站摆位助手' },
+    ],
+  },
+  {
+    id: 'track', label: '追踪', g: '◎',
+    children: [
+      { id: 'track.quality', label: '追踪质量' },
     ],
   },
   { id: 'driver', label: '驱动', g: '◉' },
@@ -26,7 +30,7 @@ const NAV = [
 ];
 
 let route = 'home';
-const openGroups = { base: true };
+const openGroups = { base: true, track: true };
 let state = null;
 let selected = null; // serial of the base shown in the detail panel
 let flashChoice = null;
@@ -36,8 +40,9 @@ let backupChoice = null;
 let flashBusy = false; // a write or verify is running in the background
 let busyLabel = '';   // which operation that is
 let optical = null;    // last raw optical capture
-let hitsPrev = {};     // per-channel hits from the previous frame
-let hitsTick = new Set(); // channels whose number changed, for the pop animation
+// Whether the placement check is ours to stop. Kept here rather than derived from the
+// backend flag: a click that lands while the capture is winding down used to restart it.
+let optRunning = false;
 let lastHtml = '';
 let lastRoute = '';
 
@@ -95,20 +100,13 @@ function runLog(text, cls = '') { pushLine(runLines, text, cls, paintRun); }
 function linkLog(text, cls = '') { pushLine(linkLines, text, cls, paintLink); }
 function drvLog(text, cls = '') { pushLine(drvLines, text, cls, paintDrv); }
 function paintBusyBar() {
-  const bar = $('busybar');
-  if (!bar) return;
-  bar.hidden = !flashBusy;
-  if (!flashBusy) return;
-  const txt = $('busybar-text');
-  if (txt) txt.textContent = '正在进行：' + (busyLabel || '操作');
-  const stop = $('busybar-stop');
-  if (stop) stop.hidden = false;
+  // The top banner is gone. Flashing shows its progress in a modal, the placement check has
+  // its own button state, so a page-wide bar was only duplicating them.
 }
 function paintLines(lines, id) {
   const el = $(id);
   if (!el) return;
-  if (!lines.length) { el.innerHTML = '<div class="idle">操作记录会出现在这里。</div>'; return; }
-  el.innerHTML = lines
+  if (!lines.length) { el.innerHTML = '<div class="idle">操作记录会出现在这里。</div>'; return; }  el.innerHTML = lines
     .map((l) => `<div><span class="tm">${l.t}</span><span class="${l.cls}">${esc(l.text)}</span></div>`)
     .join('');
   el.scrollTop = el.scrollHeight;
@@ -116,6 +114,73 @@ function paintLines(lines, id) {
 
 function paintRun() { paintLines(runLines, 'runlog'); }
 function paintLink() { paintLines(linkLines, 'linklog'); }
+// Only the counters, in place. Rebuilding the page for them would reset scroll and repaint
+// the whole card ten times a second.
+function paintHits() {
+  const devs = ((optical || {}).devices || []);
+  for (let i = 0; i < devs.length; i++) {
+    const slots = (devs[i].slots || []).slice().sort((a, b) => a.us - b.us);
+    const devEl = $('htdev' + i);
+    if (devEl && devEl.textContent !== devs[i].serial) devEl.textContent = devs[i].serial;
+    for (let ch = 1; ch <= 4; ch++) {
+      const el = $('hitch' + i + '_' + ch);
+      if (!el) continue;
+      const s = slots[ch - 1];
+      const text = s ? String(s.hits) : '—';
+      if (el.textContent !== text) el.textContent = text;
+    }
+  }
+}
+
+// Everything on the tracking page that changes with data, written in place so the page is
+// never rebuilt under the user's hands. Called from the poll fast path and after a render.
+function paintSlots() {
+  const dev = ((optical || {}).devices || [])[0];
+  const slots = dev ? dev.slots.slice().sort((a, b) => a.us - b.us) : [];
+  const lit = slots.map((s) => s.hits).filter((h) => h > 0).sort((a, b) => a - b);
+  const median = lit.length ? lit[Math.floor(lit.length / 2)] : 0;
+
+  for (let ch = 1; ch <= 4; ch++) {
+    const s = slots[ch - 1];
+
+    const card = $('bsc' + ch);
+    const stateEl = $('bst' + ch);
+    let cls = 'bs miss';
+    let text = '未检测到';
+    if (s) {
+      if (s.sweeps === 0) { cls = 'bs warn'; text = '收不到基站的光'; }
+      else if (median > 0 && s.hits < median * 0.3) { cls = 'bs warn'; text = '光到不了 tracker'; }
+      else { cls = ch === 1 ? 'bs ok master' : 'bs ok'; text = '正常'; }
+    } else {
+      // No slot for this channel: the card and the row already say so.
+    }
+    if (card && card.className !== cls) card.className = cls;
+    if (stateEl && stateEl.textContent !== text) stateEl.textContent = text;
+
+    const row = $('tqr' + ch);
+    const usEl = $('tqu' + ch), seenEl = $('tqs' + ch), rotEl = $('tqo' + ch), stEl = $('tqx' + ch);
+    if (!s) {
+      if (row && row.className !== 'tq-row miss') row.className = 'tq-row miss';
+      if (usEl) usEl.textContent = '—';
+      if (seenEl) seenEl.textContent = '—';
+      if (rotEl) rotEl.textContent = '—';
+      if (stEl) stEl.textContent = '没有信号';
+      continue;
+    }
+    const seen = Math.round(s.seen);
+    const k = seen >= 80 ? 'ok' : seen >= 20 ? 'mid' : 'low';
+    const label = seen >= 80 ? '同步稳定' : seen >= 20 ? '间歇丢闪' : '偶尔出现';
+    if (row && row.className !== 'tq-row ' + k) row.className = 'tq-row ' + k;
+    if (usEl) usEl.textContent = s.us + ' µs';
+    if (seenEl) seenEl.textContent = seen + '%';
+    if (rotEl) rotEl.textContent = s.ratio || '—';
+    if (stEl && stEl.textContent !== label) stEl.textContent = label;
+  }
+
+  const tag = $('tq-tag');
+  const tagText = optRunning ? '采集中' : (slots.length ? slots.length + ' 个时间槽' : '未检查');
+  if (tag && tag.textContent !== tagText) tag.textContent = tagText;
+}
 function paintDrv() { paintLines(drvLines, 'drvlog'); }
 
 function tel(st) { return st?.telemetry || {}; }
@@ -126,9 +191,11 @@ function crpDrives(st) { return (st?.drives || []).filter((d) => d.isCrp); }
 
 /* ------------------------------------------------------------------ nav */
 
+let lastNavHtml = null;
+
 function renderNav() {
   const el = $('nav');
-  el.innerHTML = NAV.map((n) => {
+  const html = NAV.map((n) => {
     if (!n.children) {
       
       const on = route === n.id;
@@ -152,13 +219,26 @@ function renderNav() {
       
       <div class="subs ${open ? '' : 'hidden'}">${kids}</div>`;
   }).join('');
+  // Rewriting the list under the pointer makes the browser drop the click: the node that
+  // took mousedown is gone by mouseup, so no click is ever dispatched. On the placement page
+  // the poll runs six times a second, which is exactly how the nav used to flicker and stop
+  // responding there.
+  if (html === lastNavHtml) return;
+  lastNavHtml = html;
+  el.innerHTML = html;
 }
 
 function navigate(id) {
+  const leavingMap = route === 'base.map' && id !== 'base.map';
   route = id;
   flashArmed = false;
   restoreArmed = false;
   if (id.startsWith('base.')) openGroups.base = true;
+  if (id.startsWith('track.')) openGroups.track = true;
+  // The map page is the only one that needs the driver's 60 Hz stream, and the driver only
+  // sends to connected clients: subscribe on entry, drop it on the way out.
+  if (id === 'base.map') { try { host?.StartLive?.(); } catch { } }
+  else if (leavingMap) { try { host?.StopLive?.(); } catch { } }
   renderNav();
   renderView();
 }
@@ -265,6 +345,10 @@ function renderHome(st) {
 }
 
 function baseState(b) {
+  // Seen first: a station that was placed while a tracker was running stayed "已锁定" forever
+  // after it was switched off, because none of the later states looked at whether its light
+  // still reached us.
+  if (!b.seen) return { t: '未在线', c: 'warn' };
   if (b.origin) return { t: '就绪', c: '' };
   if (b.locked) return { t: '已锁定', c: '' };
   if (b.placed) return { t: '未锁定', c: 'warn' };
@@ -683,6 +767,39 @@ function renderStockGate(st, crp, hasCrp) {
 
   <div class="runlog" id="runlog"></div>`;
 }
+// The table under the 3D view. Every placed station gets one row: where it is, how well
+// it is pinned down, and how many frames went into that estimate. The 3D scene answers
+// "which direction", this answers "how sure".
+function mapDataHtml(st) {
+  const bs = bases(st).filter((b) => b.p && b.p.length === 3);
+  if (!bs.length) return '';
+
+  const head = `<div class="mtr mth">
+    <span>频道</span><span>序列号</span><span>误差</span><span>解算帧数</span>
+    <span>x</span><span>y</span><span>z</span><span>状态</span>
+  </div>`;
+
+  const rows = bs.map((b) => {
+    const [x, y, z] = b.p;
+    const mm = Number.isFinite(b.sigma) ? b.sigma * 1000 : NaN;
+    const mmTxt = Number.isFinite(mm) ? (mm < 10 ? mm.toFixed(1) : mm.toFixed(0)) : '—';
+    // 15 mm is where a station's placement stops being trustworthy for a room solve.
+    const bad = !Number.isFinite(mm) || mm > 15;
+    const s = baseState(b);
+    return `<div class="mtr">
+      <span class="c-ch">${esc(String(b.channel ?? '—'))}</span>
+      <span class="c-id">${esc(b.serial || '')}</span>
+      <span class="c-n${bad ? ' bad' : ''}">${mmTxt}</span>
+      <span class="c-n">${b.observations ?? 0}</span>
+      <span class="c-n">${x.toFixed(3)}</span>
+      <span class="c-n">${y.toFixed(3)}</span>
+      <span class="c-n">${z.toFixed(3)}</span>
+      <span class="c-st"><span class="pill ${s.c}"><i></i>${s.t}</span></span>
+    </div>`;
+  }).join('');
+
+  return `<div class="mtable">${head}${rows}</div>`;
+}
 function renderMap(st) {
   const t = tel(st);
   const bs = (t.bases || []).filter((b) => b.p && b.p.length === 3);
@@ -749,71 +866,54 @@ function renderDriver(st) {
   <div class="runlog" id="drvlog"></div>`;
 }
 
-function renderLink(st) {
-  // Slot order is the flash order, which is the channel order: slot 0 is channel 1.
-  const o = optical || {};
-  const dev = (o.devices || [])[0];
-  const slots = dev ? dev.slots.slice().sort((a, b) => a.us - b.us) : [];
-  const lit = slots.map((s) => s.hits).filter((h) => h > 0).sort((a, b) => a - b);
-  const median = lit.length ? lit[Math.floor(lit.length / 2)] : 0;
+function renderTrackQuality(st) {
+  // Structure only: the cards, the four rows and the warning box are fixed, and paintSlots
+  // fills them in place. Keeping the numbers out of the markup means a poll that only
+  // changed a counter never rebuilds the page, which used to throw away the scroll position
+  // a moment after the user dragged it.
+  const checking = optRunning;
 
-  const plan = [1, 2, 3, 4].map((ch) => {
-    const s = slots[ch - 1];
-    if (!s) return { ch, cls: 'missing', state: '未检测到' };
-    if (s.sweeps === 0) return { ch, cls: 'warn', state: '收不到基站的光' };
-    if (median > 0 && s.hits < median * 0.3) return { ch, cls: 'warn', state: '光到不了 tracker' };
-    return { ch, cls: ch === 1 ? 'ok master' : 'ok', state: '正常' };
-  });
+  const stations = [1, 2, 3, 4].map((ch) =>
+    `<div class="bs miss" id="bsc${ch}">
+      <div class="bs-icon"><span class="lens"></span></div>
+      <div class="bs-ch">频道 ${ch}</div>
+      ${ch === 1 ? '<div class="bs-tag">主基站</div>' : ''}
+      <div class="bs-state" id="bst${ch}">未检测到</div>
+    </div>`).join('');
 
-  const stations = plan.map((x) =>
-    '<div class="bs ' + x.cls + '">' +
-      '<div class="bs-icon"><span class="lens"></span></div>' +
-      '<div class="bs-ch">频道 ' + x.ch + '</div>' +
-      (x.ch === 1 ? '<div class="bs-tag">主基站</div>' : '') +
-      '<div class="bs-state">' + esc(x.state) + '</div>' +
-    '</div>').join('');
+  const rows = [1, 2, 3, 4].map((ch) =>
+    `<div class="tq-row miss" id="tqr${ch}">
+      <span class="tq-ch">${ch}</span>
+      <span class="tq-n" id="tqu${ch}">—</span>
+      <span class="tq-n" id="tqs${ch}">—</span>
+      <span class="tq-n" id="tqo${ch}">—</span>
+      <span class="tq-st" id="tqx${ch}">没有信号</span>
+    </div>`).join('');
 
-  const okCh = plan.filter((x) => x.cls.indexOf('ok') === 0).map((x) => x.ch);
-  const badCh = plan.filter((x) => x.cls === 'warn').map((x) => x.ch);
-  const missCh = plan.filter((x) => x.cls === 'missing').map((x) => x.ch);
-
-  let help = '';
-  if (optical) {
-    const parts = [];
-    if (okCh.length) parts.push('频道 ' + okCh.join('、') + ' 能被基站照射到，摆位没问题。');
-    if (badCh.length) parts.push('频道 ' + badCh.join('、') + ' 收不到足够的光，请检查它们和基站之间有没有遮挡。');
-    if (missCh.length) parts.push('但频道 ' + missCh.join('、') + ' 未被检测到，请确认一下你是否有这些基站，如果有，请确保它们能被基站照射到。');
-    help = parts.length ? '<p class="note">' + parts.join('') + '</p>' : '';
-  }
-
-  const notice = missCh.length
-    ? '<div class="warnbox">' +
-        '<b>频道 ' + missCh.join('、') + ' 的基站未被检测到！</b>' +
-        '<span>如果你没有这些基站，请忽略这条信息。</span>' +
-        '<span>如果你有频道 ' + missCh.join('、') + ' 的基站且开机了，请检查：频道 ' + missCh.join('、') +
-        ' 的基站是否能够被基站照射到，如果不能，请调整频道 ' + missCh.join('、') + ' 的基站摆位！</span>' +
-      '</div>'
-    : '';
-
-  const hits = [1, 2, 3, 4].map((ch) => {
-    const s = slots[ch - 1];
-    return '<div class="hrow"><span>频道 ' + ch + '</span><b class="mono' + (hitsTick.has(ch) ? ' tick' : '') + '">' +
-      (s ? s.hits + ' hits/s' : '—') + '</b></div>';
-  }).join('');
-
-  // The helper has its own run state. A flash or a driver install happening in the background
-  // is not "checking", and must not relabel this page's button.
-  const checking = flashBusy && busyLabel === '检查基站摆位';
+  // One row per receiver: with more than one tracker connected the old two-column list could
+  // only show the first one.
+  const devs = (optical || {}).devices || [];
+  const hitHead = '<div class="ht-row ht-head"><span class="ht-dev">设备</span>' +
+    '<span class="ht-n">频道 1</span><span class="ht-n">频道 2</span><span class="ht-n">频道 3</span><span class="ht-n">频道 4</span></div>';
+  const hitRows = devs.length
+    ? devs.map((d, i) => `<div class="ht-row">
+        <span class="ht-dev" id="htdev${i}">${esc(d.serial)}</span>
+        <span class="ht-n" id="hitch${i}_1">—</span>
+        <span class="ht-n" id="hitch${i}_2">—</span>
+        <span class="ht-n" id="hitch${i}_3">—</span>
+        <span class="ht-n" id="hitch${i}_4">—</span>
+      </div>`).join('')
+    : `<div class="ht-row"><span class="ht-dev">未开始检测</span>
+        <span class="ht-n">—</span><span class="ht-n">—</span><span class="ht-n">—</span><span class="ht-n">—</span></div>`;
 
   return `
-  <div class="h"><h2>基站摆位助手</h2><span class="tag${checking ? ' busy' : ''}">${checking ? '检查中' : (slots.length ? '检测到 ' + slots.length + ' 台' : '未检查')}</span></div>
-  <p class="sub-line">这页用来确认基站摆得对不对。摆位不对时，某台会收不到另一台的光，房间就用不了。它能检测哪台基站摆放有问题。</p>
+  <div class="tq-page">
+  <div class="h" style="margin-bottom:16px"><h2>追踪质量</h2><span class="tag${checking ? ' busy' : ''}" id="tq-tag">${checking ? '采集中' : '未检查'}</span></div>
 
-  <div class="diag warn" style="margin-bottom:14px">
+  <div class="diag warn diag-center" style="margin-bottom:14px">
     <span class="d-dot"></span>
     <div>
       <b>点击“开始检查”会自动关闭 SteamVR 相关进程</b>
-      <span>接收器同一时间只能被一个程序占用。检查完你重新打开 SteamVR 就行，不会改任何设置。</span>
     </div>
   </div>
 
@@ -821,23 +921,20 @@ function renderLink(st) {
     <button class="b ${checking ? 'stop' : 'p'}" id="btn-link">${checking ? '停止检查' : '开始检查'}</button>
     <span class="grow"></span>
   </div>
-  <p class="note spaced">检查会一直进行，数据实时刷新，直到你点停止或者满 10 分钟。期间不要碰基站，也不要碰 tracker。</p>
+  <p class="note spaced">检查会一直进行，数据实时刷新，直到你点停止或者满 10 分钟。<br>可以在各个基站能照射到的范围内晃动 tracker 以查看追踪质量。</p>
 
-  <div class="link2">
-    <div class="link-left">
-      <div class="bsgrid">${stations}</div>
-      ${help}
-      <div class="hits">
-        <div class="card-h">激光击中次数</div>
-        ${hits}
-      </div>
-    </div>
-    <div class="link-right">
-      ${notice}
-      <div class="runlog" id="linklog"></div>
-    </div>
+  <div class="bsgrid" style="margin-bottom:14px">${stations}</div>
+  <div class="tq">
+    <div class="tq-head"><span class="tq-ch">序号</span><span class="tq-n">时间偏移</span><span class="tq-n">出现比例</span><span class="tq-n">轮转</span><span class="tq-st">同步状态</span></div>
+    ${rows}
+  </div>
+  <div class="hits" style="margin-top:14px">
+    <div class="card-h">激光击中次数</div>
+    <div class="hits-table">${hitHead}${hitRows}</div>
+  </div>
   </div>`;
 }
+
 function renderAbout() {
   return `
   <div class="h"><h2>关于</h2><span class="tag">openhouse setup</span></div>
@@ -887,7 +984,7 @@ function renderView() {
   const view = $('view');
   // Pages that own their own scroll containers: their columns fill the window and scroll
   // internally, so nothing the busy bar does can push them over the edge.
-  view.classList.toggle('fit', route === 'base.map' || route === 'base.link' || route === 'base.flash');
+  view.classList.toggle('fit', route === 'base.map' || route === 'track.quality' || route === 'base.flash');
   if (!st) {
     view.innerHTML = `<div class="empty"><div class="empty-h">正在读取…</div></div>`;
     return;
@@ -922,7 +1019,7 @@ function renderView() {
     case 'base.status': html = safe(() => renderBaseStatus(st)); break;
     case 'base.flash': html = safe(() => renderFlash(st)); break;
     case 'base.map': html = safe(() => renderMap(st)); break;
-    case 'base.link': html = safe(() => renderLink(st)); break;
+    case 'track.quality': html = safe(() => renderTrackQuality(st)); break;
     case 'driver': html = safe(() => renderDriver(st)); break;
     case 'about': html = safe(() => renderAbout()); break;
     case 'log': html = `<div class="h"><h2>日志</h2><span class="tag" id="log-count">${logLines.length} 条</span></div>
@@ -942,7 +1039,7 @@ function renderView() {
     if (route === 'base.status') placeSelbox(false);
     if (route === 'base.flash') paintRun();
     if (route === 'driver') paintDrv();
-    if (route === 'base.link') paintLink();
+    if (route === 'track.quality') { paintHits(); paintSlots(); paintLink(); }
     return;
   }
   const keepScroll = view.scrollTop;
@@ -965,7 +1062,7 @@ function renderView() {
   if (route === 'base.flash' || route === 'driver') {
     if (route === 'driver') paintDrv(); else paintRun();
   }
-  if (route === 'base.link') paintLink();
+  if (route === 'track.quality') { paintHits(); paintSlots(); paintLink(); }
   if (route === 'base.map') { const c = $('map3d'); if (c) Map3D.show(c, st); } else { Map3D.hide(); }
 }
 
@@ -1012,16 +1109,6 @@ document.addEventListener('click', async (e) => {
     renderNav();
     return;
   }
-  const bs = e.target.closest('#busybar-stop');
-  if (bs) {
-    if (!flashBusy) return;
-    // Only the optical check can actually be interrupted; everything else has to run to the
-    // end, so the button explains that instead of doing nothing.
-    if (busyLabel === '检查基站摆位') { if (host) await host.StartOptical(0); return; }
-    showBusyNotice(busyLabel);
-    return;
-  }
-
   const lc = e.target.closest('#btn-log-clear');  if (lc) {
     logLines.length = 0;
     const box = $('logbox');
@@ -1047,13 +1134,21 @@ document.addEventListener('click', async (e) => {
 
   const lk = e.target.closest('#btn-link');
   if (lk) {
-    if (flashBusy && busyLabel !== '检查基站摆位') { showBusyNotice(busyLabel); return; }
     if (!host) { runLog('宿主桥接没起来', 'warn'); return; }
+    if (optRunning) {
+      optRunning = false;
+      linkLog('停止检查…');
+      try { await host.StopOptical(); } catch (err) { log('停止失败：' + (err?.message || err), 'warn'); }
+      renderView();
+      return;
+    }
+    if (flashBusy) { showBusyNotice(busyLabel); return; }
+    optRunning = true;
     linkLines.length = 0;
     optical = null;
-    linkLog('开始检查基站摆位…');
+    linkLog('开始检查追踪质量…');
     const err = await host.StartOptical(600);
-    if (err) linkLog(err, 'warn');
+    if (err) { optRunning = false; linkLog(err, 'warn'); }
     renderView();
     return;
   }
@@ -1266,6 +1361,9 @@ window.addEventListener('resize', () => Map3D.resize());
       
         flashBusy = !!m.busy;
         busyLabel = m.label || '';
+        // The capture ended on the backend side (time limit, or the process died): the
+        // button has to stop offering "stop" for something that is gone.
+        if (!flashBusy) optRunning = false;
         paintBusyBar();
       
         renderView();
@@ -1276,17 +1374,6 @@ window.addEventListener('resize', () => Map3D.resize());
       
       if (m.optical) {
       
-        const dev0 = (m.optical.devices || [])[0];
-        const slots0 = dev0 ? dev0.slots.slice().sort((a, b) => a.us - b.us) : [];
-        const next = {};
-        const tick = new Set();
-        for (let ch = 1; ch <= 4; ch++) {
-          const v = slots0[ch - 1] ? slots0[ch - 1].hits : null;
-          next[ch] = v;
-          if (hitsPrev[ch] !== undefined && hitsPrev[ch] !== v) tick.add(ch);
-        }
-        hitsPrev = next;
-        hitsTick = tick;
         optical = m.optical;
       
         renderView();
@@ -1302,7 +1389,7 @@ window.addEventListener('resize', () => Map3D.resize());
       else if (m.level === 'wait-timeout') { showWaitResult('timeout'); }
 
       if (m.text) {
-        if (m.op === '检查基站摆位') linkLog(m.text, m.level || '');
+        if (m.op === '检查追踪质量') linkLog(m.text, m.level || '');
         else if (m.op && m.op.indexOf('驱动') >= 0) drvLog(m.text, m.level || '');
         else runLog(m.text, m.level || '');
       }
@@ -1322,8 +1409,9 @@ window.addEventListener('resize', () => Map3D.resize());
   await refresh(false);
   const tick = async () => {
     await refresh(true);
-    // The map page follows the tracker closely; everywhere else two seconds is plenty.
-    setTimeout(tick, route === 'base.map' ? 220 : 2000);
+    // The map page follows the tracker closely, the placement helper reads a one-second
+    // counter, everywhere else two seconds is plenty.
+    setTimeout(tick, route === 'base.map' ? 30 : route === 'track.quality' ? 150 : 2000);
   };
-  setTimeout(tick, route === 'base.map' ? 220 : 2000);
+  setTimeout(tick, route === 'base.map' ? 30 : route === 'track.quality' ? 150 : 2000);
 })();

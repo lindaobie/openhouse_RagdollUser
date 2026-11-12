@@ -1163,7 +1163,9 @@ class Provider : public IServerTrackedDeviceProvider {
         lastTuning_ = now;
         ApplyTuning(false);
       }
-      if (now - lastTelemetry_ >= 0.05) {  // viewers: ~20 Hz is plenty to watch
+      // 60 Hz: the map page draws at the display rate, and 20 Hz left it interpolating
+      // nothing for two frames out of three, which read as drag on the tracker cube.
+      if (now - lastTelemetry_ >= 1.0 / 60.0) {
         lastTelemetry_ = now;
         g_telemetry.PublishState(now, snapshot_, updates, session_->Receivers(),
                                  {roomPublisher_.Settled(), roomPublisher_.Epoch(), lh::openvr::RoomSettle::kMaxSigma,

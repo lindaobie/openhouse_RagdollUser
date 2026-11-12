@@ -262,7 +262,9 @@ int Run(int argc, char** argv) {
     if (!transport.Start()) { transport.Stop(); throw std::runtime_error("no devices opened"); }
     std::cout << "Checking sync layout. Ctrl-C to stop.\n" << std::flush;
     while (!stopped) {
-      std::this_thread::sleep_for(std::chrono::seconds(1));
+      // Report() computes rates over its own window, so the print cadence does not change
+      // the numbers: 50 ms just makes the page follow the light sooner.
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
       std::cout << "---\n" << counters.sync.Report() << std::flush;
     }
     transport.Stop();

@@ -55,6 +55,13 @@ public class HostBridge
     // Lets a launcher (or a test) open on a given page: OPENHOUSE_PAGE=base.flash
     public string StartPage() => Environment.GetEnvironmentVariable("OPENHOUSE_PAGE") ?? "";
 
+    /// Opens the streaming subscription the map page uses; harmless if already open.
+    public void StartLive() => Probe.StartLive();
+
+    /// Drops it again when the map page is left. The driver only broadcasts to connected
+    /// clients, so nothing is wasted when nobody is watching.
+    public void StopLive() => Probe.StopLive();
+
     /// Starts a write operation in the background. Returns an error string, or "".
     public string StartFlash(string kind, string firmwareName)
     {
@@ -88,19 +95,28 @@ public class HostBridge
         return "";
     }
 
-    /// Starts or stops a raw optical capture. Returns an error string, or "".
+    /// Starts a raw optical capture. Returns an error string, or "".
+    /// Stopping goes through StopOptical: deciding by "is it running" meant a click that
+    /// landed a few milliseconds late restarted the capture instead of ending it.
     public string StartOptical(int seconds)
     {
-        if (Optical.Running) { Optical.Stop(); return ""; }
+        if (Optical.Running) return "";
         if (_busy) return Busy("等它跑完");
         if (Optical.ExePath() is null) return "找不到 lhcapture.exe";
-        Begin("检查基站摆位");
+        Begin("检查追踪质量");
         _ = Task.Run(() =>
         {
             try { Optical.Run(seconds, Emit, _form.PostOptical); }
             catch (Exception e) { Emit("失败：" + e.Message, "warn"); }
             finally { End(); }
         });
+        return "";
+    }
+
+    /// Ends the capture if one is running. Safe to call while it is still winding down.
+    public string StopOptical()
+    {
+        Optical.Stop();
         return "";
     }
 

@@ -51,7 +51,9 @@ class SyncMonitor {
   }
 
  private:
-  static constexpr double kWindow = 4.0;
+  // Was 4.0, then 1.5. Long enough for the cadence/variance maths (>=20 groups), short
+  // enough that a station being blocked shows up within a second.
+  static constexpr double kWindow = 0.8;
   struct Flash { double offset, width; };
   struct Group { double time; std::vector<Flash> flashes; int hits; };
   struct Device {

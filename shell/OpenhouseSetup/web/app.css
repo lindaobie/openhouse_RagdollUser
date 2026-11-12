@@ -179,6 +179,9 @@ main { flex: 1; padding: 18px 22px 26px; overflow-y: auto; min-width: 0; }
 .diag.warn { border-color: rgba(214,168,106,.25); background: rgba(214,168,106,.045); }
 .diag.warn .d-dot { background: var(--warn); }
 .diag.warn b { color: #e8d3ae; }
+/* A one-line banner reads better with the dot and the label on the same baseline. */
+.diag.diag-center { align-items: center; }
+.diag.diag-center .d-dot { margin-top: 0; }
 .diag.bad { border-color: rgba(224,121,90,.28); background: rgba(224,121,90,.05); }
 .diag.bad .d-dot { background: var(--accent); }
 .diag.bad b { color: #f0c3b2; }
@@ -282,6 +285,10 @@ main { flex: 1; padding: 18px 22px 26px; overflow-y: auto; min-width: 0; }
 #view.fit .steps, #view.fit .cols, #view.fit .acts, #view.fit .note, #view.fit .diag { flex: 0 0 auto; }
 #view.fit .runlog { height: auto; flex: 1 1 auto; min-height: 120px; }
 #view.fit .link2 { flex: 1 1 auto; min-height: 0; height: auto; }
+/* Track quality is one scrolling column: every block keeps its natural height and the
+   page scrolls, instead of the flex box squeezing the table down to a single row. */
+#view.fit .tq-page { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+#view.fit .tq-page > * { flex: 0 0 auto; }
 .map3d-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 .map3d-canvas:active { cursor: grabbing; }
 .map3d-label {
@@ -312,7 +319,7 @@ main { flex: 1; padding: 18px 22px 26px; overflow-y: auto; min-width: 0; }
 .mtable { border-top: 1px solid var(--line); font-size: 11px; }
 .mtr {
   display: grid;
-  grid-template-columns: 30px 96px 56px 80px 50px 46px 36px 56px 56px 56px 42px minmax(96px, 1fr);
+  grid-template-columns: 40px 118px 56px 72px 64px 64px 64px minmax(96px, 1fr);
   align-items: center; gap: 7px;
   padding: 7px 2px; border-bottom: 1px solid var(--line-soft);
   font-family: "Cascadia Mono", Consolas, monospace;
@@ -333,9 +340,8 @@ main { flex: 1; padding: 18px 22px 26px; overflow-y: auto; min-width: 0; }
 .mtr.mth .c-fps { color: inherit; }
 /* header cells follow the alignment of the data they label */
 .mtr.mth span { white-space: nowrap; }
-.mtr.mth span:nth-child(3), .mtr.mth span:nth-child(5), .mtr.mth span:nth-child(6),
-.mtr.mth span:nth-child(7), .mtr.mth span:nth-child(8), .mtr.mth span:nth-child(9),
-.mtr.mth span:nth-child(10), .mtr.mth span:nth-child(11) { text-align: right; }
+.mtr.mth span:nth-child(3), .mtr.mth span:nth-child(4),
+.mtr.mth span:nth-child(5), .mtr.mth span:nth-child(6), .mtr.mth span:nth-child(7) { text-align: right; }
 .mtr .c-st { font-size: 11px; color: var(--ink-dim); }
 .mtr .pill { font-size: 10.5px; padding: 1px 7px; }
 
@@ -496,19 +502,72 @@ main { flex: 1; padding: 18px 22px 26px; overflow-y: auto; min-width: 0; }
 /* The re-plug steps, kept as one left-aligned block centred inside the dialog. */
 .modal-steps { display: block; width: fit-content; margin: 14px auto 2px; text-align: left; line-height: 2.1; }
 /* ---- placement helper: four simulated stations ---- */
-.link2 { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: stretch; }
+.link2 { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
 .link-left { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow-y: auto; }
+/* Without this the column squeezes the table when the page is short, and rows disappear. */
+.link-left > * { flex: 0 0 auto; }
 .link-right { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-/* The column has a fixed height now, so the log fills whatever the notice above leaves and
-   scrolls inside that box instead of stretching the page. */
-.link2 .runlog { height: auto; flex: 1 1 auto; margin-top: 0; min-height: 120px; max-height: none; overflow-y: auto; }
+/* The log is a side channel, not the page's main content: give it a fixed window so the
+   table and the counters keep the room. */
+.link2 .runlog { height: 150px; flex: 0 0 150px; margin-top: 0; min-height: 0; max-height: 150px; overflow-y: auto; }
+#view.fit .link2 .runlog { height: 150px; flex: 0 0 150px; min-height: 0; }
 .note.spaced { margin: 10px 0 18px; }
+/* The hint grows and shrinks with what is currently wrong. Reserving the tallest case
+   keeps the station cards and the counters from jumping while someone is aiming a base. */
+.note.help-fixed { min-height: 5.1em; }
 
 .warnbox { border: 1px solid rgba(214, 168, 106, .35); background: rgba(214, 168, 106, .055); border-radius: 10px; padding: 12px 14px; }
 .warnbox b { display: block; font-size: 12.5px; color: var(--warn); margin-bottom: 7px; }
 .warnbox span { display: block; font-size: 11.5px; color: var(--ink-dim); line-height: 1.75; }
 
 .hits { border: 1px solid var(--line); border-radius: 10px; background: #121317; padding: 12px 15px; }
+/* Two columns: four full-width rows pushed the rest of the page off screen. */
+.hits-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 22px; }
+/* One row per receiver, one column per channel. */
+.hits-table { font-size: 11.5px; }
+.ht-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.3fr) repeat(4, minmax(56px, 1fr));
+  align-items: center; gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line-soft);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.ht-row:last-child { border-bottom: 0; }
+.ht-head {
+  font-size: 10px; color: var(--ink-faint); letter-spacing: .06em;
+  font-family: "Noto Sans SC", "Segoe UI", sans-serif;
+}
+.ht-dev { color: #e2e5ea; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ht-n { text-align: right; color: var(--ink-dim); }
+.ht-head .ht-n { color: inherit; }
+
+/* ---- sync slots: one row per station taking part in the round ---- */
+.tq { border: 1px solid var(--line); border-radius: 10px; background: #121317; overflow: hidden; }
+.tq-head, .tq-row {
+  display: grid;
+  grid-template-columns: 40px 1fr 1fr 1fr 1.4fr;
+  align-items: center; gap: 10px;
+  padding: 9px 15px;
+  font-size: 11.5px;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.tq-head {
+  font-size: 10px; color: var(--ink-faint); letter-spacing: .08em;
+  font-family: "Noto Sans SC", "Segoe UI", sans-serif;
+  border-bottom: 1px solid var(--line);
+}
+.tq-row + .tq-row { border-top: 1px solid var(--line-soft); }
+.tq-ch { color: var(--ink-dim); }
+.tq-n { color: var(--ink-dim); text-align: right; }
+.tq-st { text-align: right; font-family: "Noto Sans SC", "Segoe UI", sans-serif; }
+.tq-row.ok .tq-st { color: var(--ok); }
+.tq-row.mid .tq-st { color: var(--warn); }
+.tq-row.low .tq-st { color: var(--warn); }
+.tq-row.miss .tq-st { color: var(--ink-faint); }
+.tq-row.miss .tq-ch, .tq-row.miss .tq-n { color: #3a3d44; }
 .hits .card-h { margin-bottom: 8px; }
 .hrow { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; padding: 5px 0; border-bottom: 1px solid var(--line-soft); }
 .hrow:last-child { border-bottom: 0; }
@@ -566,13 +625,6 @@ main { flex: 1; padding: 18px 22px 26px; overflow-y: auto; min-width: 0; }
   color: #fff;
 }
 
-/* a number that just changed pops once */
-@keyframes tickPop {
-  0%   { transform: translateY(4px) scale(.9); color: var(--accent); }
-  55%  { transform: translateY(-2px) scale(1.07); }
-  100% { transform: none; }
-}
-.hrow b.tick { display: inline-block; animation: tickPop .45s cubic-bezier(.3, 1.5, .5, 1); }
 /* ---- global "something is running" bar, visible on every page ---- */
 .busybar {
   display: flex; align-items: center; gap: 10px;

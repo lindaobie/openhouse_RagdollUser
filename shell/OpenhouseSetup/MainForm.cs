@@ -1,5 +1,6 @@
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -126,11 +127,30 @@ public class MainForm : Form
     }
 
     /// Raw optical capture result, straight to the page.
+    ///
+    /// The capture prints every 100 ms, and BeginInvoke only queues: if the UI thread falls
+    /// behind, the page walks an ever-growing backlog and shows a value from seconds ago.
+    /// Keep the newest payload and let queued posts find it gone, so a slow frame costs a
+    /// sample instead of delaying every later one.
+    private string? _pendingOptical;
+    private int _opticalQueued;
+
     public void PostOptical(string json)
     {
         if (IsDisposed || !IsHandleCreated) return;
-        try { BeginInvoke(() => _web.CoreWebView2?.PostWebMessageAsJson($"{{\"optical\":{json}}}")); }
-        catch { }
+        _pendingOptical = json;
+        if (Interlocked.Exchange(ref _opticalQueued, 1) == 1) return;  // one post in flight
+        try
+        {
+            BeginInvoke(() =>
+            {
+                var latest = _pendingOptical;
+                _pendingOptical = null;
+                Interlocked.Exchange(ref _opticalQueued, 0);
+                if (latest is not null) _web.CoreWebView2?.PostWebMessageAsJson($"{{\"optical\":{latest}}}");
+            });
+        }
+        catch { Interlocked.Exchange(ref _opticalQueued, 0); }
     }
 
     /// Tells the page whether a background write is in flight, and what it is.

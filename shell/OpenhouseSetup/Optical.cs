@@ -38,8 +38,14 @@ internal static class Optical
     /// Keeps capturing until stopped or maxSeconds elapse, posting a fresh picture as it goes.
     public static void Run(int maxSeconds, Action<string, string> emit, Action<string> post)
     {
+        // Cleared before anything slow happens. It used to be cleared after stopping SteamVR,
+        // which could take seconds: a stop requested in that window was silently undone and
+        // the capture then ran to its ten-minute limit.
+        _stop = false;
+        Running = true;
+
         var exe = ExePath();
-        if (exe is null) { emit("找不到 lhcapture.exe", "warn"); return; }
+        if (exe is null) { Running = false; emit("找不到 lhcapture.exe", "warn"); return; }
 
         var running = Driver.Running();
         if (running.Count > 0)
@@ -48,6 +54,7 @@ internal static class Optical
             Driver.StopAll(emit);
             emit("SteamVR 已退出。检查完你可以重新打开它。", "ok");
         }
+        if (_stop) { Running = false; emit("已停止。", "ok"); return; }
 
         var state = new ConcurrentDictionary<string, JsonObject>();
         var gate = new object();
@@ -63,9 +70,7 @@ internal static class Optical
             StandardOutputEncoding = Encoding.UTF8,
         };
 
-        _stop = false;
-        Running = true;
-        emit("开始采集。数据每 5 秒刷新一次，直到你点停止或者满 10 分钟。", "ok");
+        emit("开始采集。数据实时刷新，直到你点停止或者满 10 分钟。", "ok");
 
         using var proc = new Process { StartInfo = info };
         var noise = 0;
@@ -76,6 +81,10 @@ internal static class Optical
             var m = Line.Match(line);
             if (!m.Success)
             {
+                // "no sync flashes" repeats every 100 ms until the first seconds of pulses
+                // land. It is the normal startup state, and letting it through would eat the
+                // noise budget that real complaints need.
+                if (line.Contains("no sync flashes")) return;
                 // Anything else lhcapture says is still worth seeing: it is where "no receiver"
                 // and similar complaints show up.
                 if (line.Length > 0 && line != "---" && noise < 12)
@@ -89,9 +98,9 @@ internal static class Optical
             state[m.Groups["dev"].Value] = Entry(m, line);
             lock (gate)
             {
-                // lhcapture prints a report every five seconds; posting on every line would
-                // push dozens of identical frames a second at the page.
-                if ((DateTime.UtcNow - lastPost).TotalMilliseconds < 900) return;
+                // --check prints a report every 50 ms; keep a small throttle so a burst of
+                // lines does not queue up behind the serializer.
+                if ((DateTime.UtcNow - lastPost).TotalMilliseconds < 40) return;
                 lastPost = DateTime.UtcNow;
                 post(Payload(state));
             }
@@ -101,7 +110,15 @@ internal static class Optical
             // Redirected but unread stderr both hides the reason a capture failed and can
             // block the child process once the pipe fills up.
             if (string.IsNullOrWhiteSpace(e.Data)) return;
-            emit("lhcapture 错误：" + e.Data.Trim(), "warn");
+            var text = e.Data.Trim();
+            // The library logs its normal connect chatter on stderr as [INFO]. Reporting
+            // those as errors on every run trains the user to ignore the log.
+            if (text.Contains("[INFO]") || text.Contains("[DEBUG]") || text.Contains("[TRACE]"))
+            {
+                emit("lhcapture: " + text, "");
+                return;
+            }
+            emit("lhcapture 错误：" + text, "warn");
         };
         proc.Start();
         proc.BeginOutputReadLine();
@@ -155,7 +172,10 @@ internal static class Optical
     private static string Payload(ConcurrentDictionary<string, JsonObject> state)
     {
         var devices = new JsonArray();
-        foreach (var e in state.Values) devices.Add(e.DeepClone());
+        // Ordered by serial: the page addresses rows by index, and a dictionary's order is
+        // not stable between posts, which would shuffle the rows on every refresh.
+        foreach (var kv in state.OrderBy(k => k.Key, StringComparer.Ordinal))
+            devices.Add(kv.Value.DeepClone());
         return new JsonObject { ["devices"] = devices, ["running"] = Running }.ToJsonString();
     }
 }

@@ -3,7 +3,9 @@
   "source_upstream": "https://github.com/YusufOzmen01/openhouse/tree/aaaaffc",
   "local_patches": [
     "src/transport/usb/usb_transport.{hpp,cpp}: OnDeviceGone() clears receivers_[dongle].connected when its device goes",
-    "src/runtime/session.cpp: Base::lastSeen, seen expires after 8 s without a fresh OOTX decode"
+    "src/runtime/session.cpp: Base::lastSeen, seen expires after 8 s without a fresh OOTX decode",
+    "src/openvr/driver_lighthouse.cpp: PublishState at 60 Hz instead of 20 Hz, so the map page is not reading stale poses",
+    "apps/lhcapture/main.cpp + sync_monitor.hpp: check report every 50 ms over a 0.8 s window, for a placement page that follows the light"
   ],
   "compiler": "MSVC 14.51.36231 (Visual Studio 2026 BuildTools), x64-windows-static",
   "vcpkg_baseline": "a5f736224e85b32e25a8ffc52562333180396642",
@@ -11,22 +13,22 @@
     {
       "file": "driver_lighthouse.dll",
       "size": 4528128,
-      "sha256": "EDF4D8D32276DF9D"
+      "sha256": "B615EF38568EC250"
     },
     {
       "file": "apps/lhcapture.exe",
       "size": 604160,
-      "sha256": "BD10FDA48E62DB9A"
+      "sha256": "F9515C8186595C99"
     },
     {
       "file": "apps/lhtool.exe",
       "size": 1102848,
-      "sha256": "018A1A9E3396461C"
+      "sha256": "AF7FD298F60DE31C"
     },
     {
       "file": "apps/openhouse-check.exe",
       "size": 248320,
-      "sha256": "ADF01AE99EEBEED5"
+      "sha256": "5189587F8C4ADEB4"
     },
     {
       "file": "apps/lh.dll",
