@@ -279,6 +279,20 @@ const EN = {
 // Kept apart from EN on purpose: replacing generic words like 驱动 or 设备 inside a sentence
 // produces "DriverNone在广播State", which is worse than leaving it Chinese.
 const EN_PARTIAL = {
+  '已开启': 'Powered',
+  '无故障': 'No faults',
+  '收到光照': 'Light received',
+  '锁定 tracker': 'Tracker locked',
+  '主基站': 'Master',
+  '原厂备份在位': 'Stock backup present',
+  'SteamVR 正在运行': 'SteamVR is running',
+  '房间已收敛': 'Room settled',
+  '房间未收敛': 'Room not settled',
+  '学习': 'learned',
+  '看到': 'seeing',
+  '台在线': 'online',
+  '个时间槽': 'slots',
+  '等上一步通过': 'Waiting for the step above',
 };
 
 // Text that carries numbers or names. First match wins.
